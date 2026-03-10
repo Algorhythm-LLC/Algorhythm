@@ -5,7 +5,7 @@ services:
   minio:
     image: minio/minio:latest
     container_name: algorhythm-minio
-    command: server /data
+    command: server /data --console-address :9001
     ports:
       - "9000:9000"   # API
       - "9001:9001"   # Console
