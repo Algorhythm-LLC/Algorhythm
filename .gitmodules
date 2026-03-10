@@ -1,0 +1,6 @@
+[submodule "services/control-plane"]
+	path = services/control-plane
+	url = https://github.com/Froloveee3/algorhythm-control-plane.git
+[submodule "services/market-data-ingestor"]
+	path = services/market-data-ingestor
+	url = https://github.com/Froloveee3/algorhythm-market-data-ingestor.git
