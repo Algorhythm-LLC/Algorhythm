@@ -1,0 +1,108 @@
+# Algorhythm — полный стенд инфраструктуры
+# Оркестратор: только запуск. Конфиги сервисов — в .env каждого сервиса.
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: algorhythm-minio
+    command: server /data
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - algorhythm
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: algorhythm-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-algorhythm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-algorhythm}
+      POSTGRES_DB: ${POSTGRES_DB:-control_plane}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-algorhythm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - algorhythm
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24
+    container_name: algorhythm-clickhouse
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9009:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - algorhythm
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: algorhythm-nats
+    command: ["-js", "-m", "8222", "-sd", "/data"]
+    ports:
+      - "4222:4222"   # Client
+      - "8222:8222"   # HTTP monitoring
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - algorhythm
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: algorhythm-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - algorhythm
+
+volumes:
+  minio_data:
+  postgres_data:
+  clickhouse_data:
+  nats_data:
+  qdrant_data:
+
+networks:
+  algorhythm:
+    driver: bridge

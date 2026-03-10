@@ -1,0 +1,3 @@
+# Local env (never commit secrets)
+.env
+ops/**/.env

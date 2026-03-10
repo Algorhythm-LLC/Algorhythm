@@ -58,22 +58,22 @@
 
 - [x] docs/ сформированы
 - [x] TODO.md создан
-- [ ] Выбран первый сервис
-- [ ] Созданы репозитории для сервисов (или заглушки)
-- [ ] `.gitmodules` настроен
-- [ ] `ops/full-stack/docker-compose.yml` — инфраструктура (MinIO, PostgreSQL, ClickHouse, NATS, Qdrant)
-- [ ] `scripts/` — bootstrap, up, down
+- [x] Выбран первый сервис (control-plane + market-data-ingestor)
+- [x] Созданы репозитории для сервисов (локальная структура)
+- [ ] `.gitmodules` настроен (после создания удалённых репо)
+- [x] `ops/full-stack/docker-compose.yml` — инфраструктура (MinIO, PostgreSQL, ClickHouse, NATS, Qdrant)
+- [x] `scripts/` — bootstrap, up, down
 
 ---
 
 ## Этапы (из устава)
 
 ### Этап 1. Основа
-- [ ] создать meta-repo (структура готова)
-- [ ] подключить submodules
-- [ ] поднять MinIO, PostgreSQL, ClickHouse, NATS, Qdrant
-- [ ] создать control-plane
-- [ ] создать market-data-ingestor
+- [x] создать meta-repo (структура готова)
+- [ ] подключить submodules (после создания удалённых репо)
+- [x] поднять MinIO, PostgreSQL, ClickHouse, NATS, Qdrant
+- [x] создать control-plane
+- [x] создать market-data-ingestor
 
 ### Этап 2. Данные
 - [ ] backfill 3 лет минутных свечей
