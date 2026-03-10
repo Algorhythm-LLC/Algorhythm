@@ -83,10 +83,10 @@ internal/
 
 ### 2.4 Full 3-year trade klines backfill
 
-- [ ] 3 года trade klines
-- [ ] Monthly partitioning
-- [ ] Валидация дыр и дублей
-- [ ] Регистрация dataset в control-plane
+- [x] 3 года trade klines (years=3 в запросе, onboardDate из exchangeInfo)
+- [x] Monthly partitioning
+- [x] Валидация дублей и монотонности в батче
+- [x] Регистрация dataset в control-plane (register=true)
 
 **Путь:** `s3://algorhythm-market-data/raw/trade_klines/exchange=binance_usdm/symbol=BTCUSDT/interval=1m/year=YYYY/month=MM/part-*.parquet`
 
