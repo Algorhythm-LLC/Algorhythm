@@ -140,15 +140,15 @@ internal/
 
 ### 2.8 Feature-builder MVP
 
-- [ ] Читает trade_klines, mark_price_klines, funding_rates
-- [ ] Первый feature set по BTCUSDT
+- [x] Читает trade_klines, mark_price_klines, funding_rates
+- [x] Первый feature set по BTCUSDT
 
 **Features:**
 - Price-derived: returns_1m, returns_5m, returns_15m, ema_20, ema_50, atr_14, rsi_14, rolling_std_60, rolling_std_240
 - Futures-specific: mark_close, mark_trade_spread_bps, funding_rate_current, funding_rate_rolling_3, funding_rate_rolling_9, funding_pressure_score
 - Regime: trend_up, trend_down, flat, high_vol, low_vol
 
-- [ ] Регистрация feature set в control-plane
+- [x] Регистрация feature set в control-plane
 
 ---
 
@@ -161,8 +161,8 @@ internal/
 - [ ] Funding history в отдельном raw dataset
 - [ ] Все datasets зарегистрированы в control-plane
 - [ ] Валидация дыр, дублей, диапазонов
-- [ ] feature-builder строит первый feature dataset
-- [ ] Feature set зарегистрирован в control-plane
+- [x] feature-builder строит первый feature dataset
+- [x] Feature set зарегистрирован в control-plane
 - [ ] End-to-end цепочка на стенде
 
 ---
