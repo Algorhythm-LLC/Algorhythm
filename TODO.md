@@ -96,9 +96,9 @@ internal/
 
 ### 2.5 Mark price klines layer
 
-- [ ] Full backfill mark price klines
-- [ ] Отдельный dataset
-- [ ] Регистрация в control-plane
+- [x] Full backfill mark price klines
+- [x] Отдельный dataset
+- [x] Регистрация в control-plane
 
 **Путь:** `s3://algorhythm-market-data/raw/mark_price_klines/exchange=binance_usdm/symbol=BTCUSDT/interval=1m/year=YYYY/month=MM/part-*.parquet`
 
@@ -108,9 +108,9 @@ internal/
 
 ### 2.6 Funding rates layer
 
-- [ ] Funding history backfill
-- [ ] Monthly partitioning
-- [ ] Регистрация dataset
+- [x] Funding history backfill
+- [x] Monthly partitioning
+- [x] Регистрация dataset
 
 **Путь:** `s3://algorhythm-market-data/raw/funding_rates/exchange=binance_usdm/symbol=BTCUSDT/year=YYYY/month=MM/part-*.parquet`
 
@@ -120,13 +120,13 @@ internal/
 
 ### 2.7 Market-data-ingestor API
 
-- [ ] `POST /api/v1/jobs/sync-exchange-info`
-- [ ] `POST /api/v1/jobs/backfill/trade-klines`
-- [ ] `POST /api/v1/jobs/backfill/mark-price-klines`
-- [ ] `POST /api/v1/jobs/backfill/funding-rates`
-- [ ] `POST /api/v1/jobs/validate-dataset`
-- [ ] `GET /api/v1/datasets/{dataset_id}`
-- [ ] `GET /healthz`, `GET /readyz`
+- [x] `POST /api/v1/jobs/sync-exchange-info`
+- [x] `POST /api/v1/jobs/backfill/trade-klines`
+- [x] `POST /api/v1/jobs/backfill/mark-price-klines`
+- [x] `POST /api/v1/jobs/backfill/funding-rates`
+- [x] `POST /api/v1/jobs/validate-dataset`
+- [x] `GET /api/v1/datasets/{dataset_id}`
+- [x] `GET /healthz`, `GET /readyz`
 
 **NATS subjects:**
 - `md.sync.exchange_info.requested`
