@@ -12,6 +12,7 @@ Algorhythm/
 ├── services/       # Сервисы (submodules)
 │   ├── control-plane/
 │   ├── market-data-ingestor/
+│   ├── control-desktop/   # десктопный GUI (Wails), submodule
 │   └── ...
 └── trading_platform_technical_charter.md
 ```
@@ -40,6 +41,12 @@ Algorhythm/
    ```powershell
    curl http://localhost:8080/healthz
    ```
+
+4. **Смоук E2E (бэктест-цепочка):** с поднятыми Docker, control-plane (api + worker) и backtest-engine:
+   ```powershell
+   .\scripts\smoke-e2e.ps1
+   ```
+   Либо соберите и запустите десктопный клиент из `services/control-desktop` (`wails build`, затем `build\bin\control-desktop.exe`).
 
 ## Документация
 

@@ -7,3 +7,7 @@
 [submodule "services/feature-builder"]
 	path = services/feature-builder
 	url = https://github.com/Froloveee3/algorhythm-feature-builder.git
+
+[submodule "services/control-desktop"]
+	path = services/control-desktop
+	url = https://github.com/Froloveee3/algorhythm-control-desktop.git
