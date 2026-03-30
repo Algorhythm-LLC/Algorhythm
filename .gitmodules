@@ -11,3 +11,6 @@
 [submodule "services/control-desktop"]
 	path = services/control-desktop
 	url = https://github.com/Froloveee3/algorhythm-control-desktop.git
+[submodule "services/backtest-engine"]
+	path = services/backtest-engine
+	url = https://github.com/Froloveee3/algorhythm-backtest-engine.git
