@@ -1,6 +1,12 @@
 # Карта интеграций
 
-## Синхронные API (HTTP/JSON + OpenAPI 3.1)
+## Источник истины для jobs
+
+**Авторитетный `GET /api/v1/jobs/{id}`** — только у **control-plane**. Расширенный `job.result` (payload, партиции, backfill_stats, merge metadata) живёт здесь же. Market-data-ingestor публикует статистику через NATS / HTTP-sync в CP; отдельного «полного GET job» в ingestor не дублировать — см. его OpenAPI только для REST ingestor’а (`openapi/openapi.yaml`).
+
+## Синхронные API (HTTP/JSON + OpenAPI 3.x)
+
+Спеки: `services/*/openapi/openapi.yaml`, проверка `make openapi-lint`.
 
 ```
 ┌─────────────────────┐     POST /jobs/backfill      ┌──────────────────────────┐

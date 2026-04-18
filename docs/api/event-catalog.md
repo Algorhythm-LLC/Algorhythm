@@ -30,6 +30,8 @@
 | `llm.reindex.requested` | external / control-plane | llm-analyst | Запрос индексации run в Qdrant |
 | `llm.reindex.completed` | llm-analyst | — | Индексация завершена |
 
+REST поверхность у воркеров **feature-builder** и **backtest-engine** ограничена health/readiness — см. `services/feature-builder/openapi/openapi.yaml`, `services/backtest-engine/openapi/openapi.yaml` и ADR `docs/architecture/adr-health-http-workers.md`.
+
 ## Правила
 1. Все события versioned
 2. Все события idempotent
