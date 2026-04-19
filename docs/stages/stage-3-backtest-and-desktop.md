@@ -8,9 +8,9 @@
 
 ## Цель этапа
 
-1. Перевести стратегии на **декларативный DSL** ([ADR-004](../architecture/adr-004-backtest-dsl.md)) — JSON-документ с обязательным `schema_version`, immutable-версии в control-plane.
-2. Собрать **детерминированный backtest-engine**, интерпретирующий DSL, читающий feature parquet из MinIO и пишущий результаты в **ClickHouse**.
-3. Выстроить оркестрацию прогонов через control-plane: реестр экспериментов и runs, постановка через NATS (`bt.run.requested`), финализация по `bt.run.completed`/`bt.run.failed`.
+1. Перевести стратегии на **декларативный DSL** ([ADR-004](../architecture/adr-004-backtest-dsl.md)). В stage 3 **v1 — активный контракт** (frozen MVP, валидируется в control-plane), **v2 — draft** (композируемый AST, `entries[]/exits[]`, feature_requirements, position/risk/portfolio/time/execution models) лежит рядом для review; активация v2 — отдельная задача после заморозки.
+2. Собрать **детерминированный backtest-engine**, интерпретирующий DSL, читающий feature parquet из MinIO и пишущий результаты в **ClickHouse**. Параллелизм — между прогонами, внутри одного run — строго последовательный bar loop.
+3. Выстроить оркестрацию прогонов через control-plane: реестр экспериментов и runs, постановка через NATS (`bt.run.requested`), финализация по `bt.run.completed`/`bt.run.failed`. **Terminal state владеет control-plane**: engine не делает PATCH `completed/failed`, только публикует событие.
 4. **control-desktop** — основной GUI-оркестратор для всего полного контура: данные → фичи → бэктест → просмотр ошибок, без обязательного CLI.
 
 ---
@@ -19,16 +19,20 @@
 
 **В рамках:**
 
-- JSON Schema DSL v1 (`schema_version`, `instrument_scope`, `entry`, `exit`, `filters`, `risk`, `execution`).
+- JSON Schema DSL v1 (`schema_version`, `instrument_scope`, `entry`, `exit`, `filters`, `risk`, `execution`) — активный контракт.
+- DSL v2 draft: каркас [schemas/strategy/v2/strategy.schema.json](../../services/control-plane/schemas/strategy/v2/strategy.schema.json) + [README](../../services/control-plane/schemas/strategy/v2/README.md) под review; валидатор не активируется в этом стейдже.
 - Реестр `strategy_templates`, `strategy_versions` в control-plane с immutable-правилом.
 - Реестр `experiment_batches`, `experiment_runs` с привязкой к feature dataset, диапазону дат, параметрам.
-- Публикация команд через outbox + NATS, обработка терминальных событий.
-- Runtime в backtest-engine: bar-iteration, индикаторы, order/fill-модель, PnL, equity curve.
-- Модель результатов в ClickHouse: минимум `backtest_run_summaries` + план на `backtest_trades`, `backtest_equity_curve`, `backtest_metrics`.
+- Публикация команд через outbox + NATS, обработка терминальных событий. Terminal PATCH — за control-plane worker'ом.
+- Runtime в backtest-engine на базе v1: bar-iteration, feature parquet reader, order/fill-модель, PnL, equity curve.
+- Модель результатов в ClickHouse: ровно четыре таблицы — `backtest_run_summaries`, `backtest_trades`, `backtest_equity_curve`, `backtest_run_metrics`.
 - `control-desktop`: полноценный UI для всех сценариев этапов 2 и 3.
 
 **Out of scope:**
 
+- Активация валидатора DSL v2 (делается отдельным стейджем после заморозки schema).
+- Subject `cp.experiment.created`: в каталоге присутствует как `PLANNED`, но в stage 3 не реализуется и не потребляется — без реального сценария (pre-warm run slots, batch planning, warm caches) он добавляет асинхронной сложности без пользы.
+- ClickHouse-таблицы `backtest_positions`, `backtest_scenario_rankings`, `backtest_period_metrics_*` — следующая итерация.
 - Мультибиржевая поддержка (только Binance USDⓈ-M из этапа 2).
 - Live-трейдинг.
 - Расчёт results-aggregations через отдельный API (это этап 4).
@@ -124,7 +128,8 @@ sequenceDiagram
 Текущий статус:
 
 - Таблицы и HTTP-эндпоинты **есть** (см. секцию «Реализация»).
-- **JSON Schema файл v1 — DONE** (skeleton): [services/control-plane/schemas/strategy/v1/strategy.schema.json](../../services/control-plane/schemas/strategy/v1/strategy.schema.json) + README. Активация валидатора в `POST /strategy-versions` — TODO.
+- **JSON Schema DSL v1 — ACTIVE.** Схема в [schemas/strategy/v1/strategy.schema.json](../../services/control-plane/schemas/strategy/v1/strategy.schema.json), валидатор — [schemas/strategy/v1/validator.go](../../services/control-plane/schemas/strategy/v1/validator.go), подключен в `cmd/api/main.go` и вызывается в `POST /strategy-versions` до записи в БД. Невалидный DSL → `422 Unprocessable Entity` с структурированным `{error, issues[]}`.
+- **JSON Schema DSL v2 — DRAFT.** Каркас в [schemas/strategy/v2/strategy.schema.json](../../services/control-plane/schemas/strategy/v2/strategy.schema.json) и README. Не wired, не активируется, `POST /strategy-versions` по-прежнему принимает только `schema_version: 1.x.y`. Активация v2 — отдельный стейдж после review/freeze ([ADR-004](../architecture/adr-004-backtest-dsl.md)).
 
 ---
 
@@ -172,7 +177,7 @@ flowchart LR
 | `bt.run.requested` | control-plane worker (из `event_outbox`) | backtest-engine (durable `backtest-engine-bt-run-v1`, `DeliverNew`) | DONE (транспорт) |
 | `bt.run.completed` | backtest-engine (JS publish) | control-plane worker (durable `control-plane-bt-run-completed-v1`) | DONE (транспорт), payload будет богаче |
 | `bt.run.failed` | backtest-engine | control-plane worker (durable `control-plane-bt-run-failed-v1`) | DONE (транспорт) |
-| `cp.experiment.created` | control-plane | backtest-engine (опционально, при создании experiment_batch) | TODO — в каталоге событий есть, в коде не используется |
+| `cp.experiment.created` | control-plane | — (нет потребителя в stage 3) | **OUT OF SCOPE для stage 3** — в каталоге остаётся `PLANNED`, в коде не используется. Активация откладывается до появления реального сценария (pre-warm run slots, batch planning, prefetch datasets). |
 | `llm.reindex.requested` | control-plane | llm-analyst (этап 5) | OUT OF SCOPE для этапа 3 |
 
 Каталог: [docs/api/event-catalog.md](../api/event-catalog.md).
@@ -250,38 +255,49 @@ flowchart LR
 
 ### control-plane
 
-1. **Schema vs code alignment — DONE (skeleton).** Миграция [000006_strategy_experiment_align.up.sql](../../services/control-plane/migrations/000006_strategy_experiment_align.up.sql) подключена в [embed.go](../../services/control-plane/migrations/embed.go) и выравнивает:
-   - `strategy_templates` → добавлены `name VARCHAR(128) NOT NULL DEFAULT ''`, `description TEXT`.
-   - `strategy_versions` → rename `model_json` → `dsl_json` через идемпотентный `DO`-блок.
-   - `experiment_batches` → добавлены `feature_set_version_id UUID REFERENCES feature_set_versions(id)`, `symbol_universe_json JSONB`.
-   - `experiment_runs` → добавлены `symbol VARCHAR(32)`, `parameters_json JSONB`, `result_json JSONB`, `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`.
-   Дубль-файл `migrations/001_init_schema.sql` (никогда не был в embed, дрейфовал с 000001) — удалён. Остаётся TODO: проверить на чистой БД reset-cold-start + migrate-up прогон от 000001 до 000006 без ручных действий.
+1. **Schema vs code alignment — DONE.** Миграция [000006_strategy_experiment_align.up.sql](../../services/control-plane/migrations/000006_strategy_experiment_align.up.sql) подключена в [embed.go](../../services/control-plane/migrations/embed.go). Полный `reset-cold-start` + `migrate up` от 000001 до 000006 на чистой БД прогонялся; `POST /strategy-templates`, `POST /strategy-versions`, `POST /experiment-batches` работают без ручных шагов.
 
-2. **Активировать валидатор DSL v1.** Файл схемы уже лежит в [schemas/strategy/v1/strategy.schema.json](../../services/control-plane/schemas/strategy/v1/strategy.schema.json) (skeleton, см. [README](../../services/control-plane/schemas/strategy/v1/README.md)). Нужно: подключить библиотеку JSON Schema (кандидат — `github.com/santhosh-tekuri/jsonschema/v5`), загружать схему на старте, вызывать перед `StrategyVersionRepo.Create` в [handlers.go](../../services/control-plane/internal/adapters/http/handlers.go); на невалидный payload отдавать 400 с JSONPath-диагностикой.
+2. **JSON Schema DSL v1 — DONE.** Валидатор в [schemas/strategy/v1/validator.go](../../services/control-plane/schemas/strategy/v1/validator.go) (библиотека `github.com/santhosh-tekuri/jsonschema/v6`), тесты в `validator_test.go`, wired в [cmd/api/main.go](../../services/control-plane/cmd/api/main.go) и [internal/adapters/http/handlers.go](../../services/control-plane/internal/adapters/http/handlers.go). Невалидный payload → `422 {error, issues[]}`. Cross-field: `dsl_json.strategy_code == strategy_template_code`.
 
-3. **Решить судьбу `cp.experiment.created`.** Сейчас subject помечен в [event-catalog.md](../api/event-catalog.md) как `PLANNED` (stage 3), в коде не публикуется. Варианты: (а) реализовать emit при `POST /experiment-batches` через `event_outbox` и добавить consumer в backtest-engine, если есть сценарий «pre-warm run slot»; (б) убрать subject из каталога и ADR-003, если сценарий не требуется.
+3. **JSON Schema DSL v2 — DRAFT published.** [schemas/strategy/v2/strategy.schema.json](../../services/control-plane/schemas/strategy/v2/strategy.schema.json) + подробный [README](../../services/control-plane/schemas/strategy/v2/README.md) с таблицей сравнения v1↔v2 и runtime-контрактом. Активация (new `dslv2` package, dispatch по `schema_version` в handlers) — **отдельный стейдж после review**, не в scope stage 3.
 
-4. **Обогатить `result` джобов/runs** стандартным envelope'ом: `engine_version`, `clickhouse_summary_ref`, `trade_count`, `pnl_summary`, `artifact_paths`. Согласовать с backtest-engine payload'ом.
+4. **`cp.experiment.created` — OUT OF SCOPE.** Оставлен как `PLANNED` в [event-catalog.md](../api/event-catalog.md), в коде не публикуется и не потребляется. Возвращаемся к этому вопросу только когда появится сценарий, требующий pre-materialize run slots / prefetch datasets / warm caches / batch planning.
 
-5. **`PATCH /experiment-runs/:id/result-merge`** — по аналогии с `/jobs/:id/result-merge`, чтобы backtest-engine мог докладывать `result` частями (опционально).
+5. **Обогатить `result` джобов/runs** стандартным envelope'ом: `engine_version`, `clickhouse_summary_ref`, `trade_count`, `pnl_summary`, `artifact_paths`. Согласовать с backtest-engine payload'ом. Зависимость для engine runtime.
+
+6. **`PATCH /experiment-runs/:id/result-merge`** — по аналогии с `/jobs/:id/result-merge`, чтобы backtest-engine мог докладывать `result` частями (опционально).
 
 ### backtest-engine — основная масса работ
 
-Переход из «orchestration stub» в реальный симулятор. Разбиение на итерации:
+Переход из «orchestration stub» в реальный симулятор. Порядок соответствует ADR-004 v2 (сначала контракт → потом foundations → потом симулятор):
 
-1. **S3/MinIO adapter + Parquet reader.** Зависимости: `minio-go`, `parquet-go`. Добавить `internal/adapters/s3/`, `internal/adapters/parquet/feature_reader.go`. Читать по `dataset_id` от CP: GET dataset + GET partitions, глобально или по диапазону.
-2. **CP client.** GET `strategy-versions/{id}`, GET `experiment-runs/{id}` + PATCH status (включая terminal `completed`/`failed` + `result`). Заменить захардкоженный `"mvp"` summary.
-3. **DSL парсер и AST.** `internal/domain/strategy.go` + `internal/app/dsl/parse.go`. Структуры под каждый блок. Поддержать эволюцию `schema_version`.
-4. **Indicators runtime.** Повторить логику feature-builder'а, но онлайн/по-бар: EMA, ATR, RSI, returns, rolling std. Или — если стратегия опирается исключительно на уже посчитанные feature-колонки — пропустить. Решение зависит от DSL v1.
-5. **Bar iterator.** Плотное итерирование minute-bar с детерминизмом: фиксированный порядок чтения партиций, без map-рандома, seeded rng для stochastic-блоков DSL.
-6. **Order simulator / fill model.** Поддерживаемые типы из `execution`: market с `slippage_bps`, `fee_bps`; позже — limit с partial fills.
-7. **Portfolio / equity curve.** Учёт позиций, cash, margin (для фьючерсов — futures-специфика), fees.
-8. **Метрики и PnL агрегация.** PnL по трейду, equity timeline, drawdown, Sharpe, win rate.
-9. **Writer в ClickHouse.** Новые таблицы `backtest_trades`, `backtest_equity_curve`, `backtest_metrics` + batch-insert.
-10. **Error paths.** Payload `bt.run.failed` с типизированными ошибками (`data_missing`, `dsl_invalid`, `runtime_panic`, и т.д.).
-11. **Config/env.** Добавить `BT_MINIO_*`, `BT_S3_BUCKET`.
-12. **Детерминизм.** Фиксация `iteration order`, seeded rng, выравнивание timestamp'ов.
-13. **PATCH run на completed/failed** с `result` из самого engine'а (сейчас это делает CP worker по `bt.run.completed`). Решить, кто владеет терминальным PATCH'ем: engine или CP. Во втором случае — engine шлёт только NATS, CP worker финализирует.
+**Foundations (после freeze v2):**
+
+1. **CP client.** GET `strategy-versions/{id}`, GET `experiment-runs/{id}`, GET dataset + partitions, PATCH `running`. Заменить захардкоженный `"mvp"` summary. **Terminal PATCH (`completed`/`failed` с `result`) НЕ делает engine** — см. п. «Владелец terminal state» в ADR-004 v2; engine публикует только NATS-событие.
+2. **S3/MinIO adapter + Parquet reader.** Зависимости: `minio-go`, `parquet-go`. Добавить `internal/adapters/s3/`, `internal/adapters/parquet/feature_reader.go`. Читать по `dataset_id` от CP.
+3. **DSL парсер и AST.** `internal/domain/strategy.go` + `internal/app/dsl/parse.go`. Разбор по major-версии `schema_version`: v1 → legacy структура, v2 → AST (conditionNode, entries[], exits[] с discriminated union по `kind`).
+4. **Feature compatibility validator.** Перед bar loop: резолвит `feature_requirements.required_features` (v2) или используемые индикаторы (v1) в индексы колонок parquet; при несовпадении — `bt.run.failed` с `reason: feature_missing`.
+
+**Симулятор:**
+
+5. **Deterministic bar iterator.** Плотное итерирование minute-bar. Фиксированный порядок чтения партиций, columnar-ish layout (contiguous slices), никаких `range map` в hot path. Seeded rng из `run_id` для stochastic-блоков. Single-thread per run; параллелизм только между прогонами.
+6. **Order simulator / fill model.** Market с `slippage_bps`/`fee_bps` (v1) или модельный `fee_model`+`slippage_model`+`fill_model` (v2); позже — limit с partial fills.
+7. **Portfolio / equity curve.** Позиции, cash, margin (фьючерсы), fees. Для v2 — учитывает `position_management` (scale_in/out, partial TP, pyramiding).
+8. **Метрики и PnL.** PnL по трейду, equity timeline, drawdown, Sharpe, Sortino, win rate, profit factor, expectancy (поля уже есть в `backtest_run_metrics`).
+9. **Writer в ClickHouse.** Наполнение `backtest_trades`, `backtest_equity_curve`, `backtest_run_metrics` (DDL уже в 002). Идемпотентный rerun через `ReplacingMergeTree(version)` в metrics.
+10. **Indicators runtime (fallback).** Только для сценариев, не покрытых feature-парке. По умолчанию **выключено**: основной путь — precomputed features из feature-builder (ADR-004 v2).
+
+**Прочее:**
+
+11. **Error paths.** Payload `bt.run.failed` с типизированными ошибками (`feature_missing`, `dsl_invalid`, `data_missing`, `runtime_panic`).
+12. **Config/env.** `BT_MINIO_*`, `BT_S3_BUCKET`, `BT_CP_URL`.
+13. **Детерминизм.** Фиксация iteration order, seeded rng, выравнивание timestamp'ов, никаких map на hot path.
+
+**Решено, не делаем в этом стейдже:**
+
+- Engine НЕ делает terminal PATCH — это зона control-plane worker'а.
+- `cp.experiment.created` НЕ консьюмится.
+- Параллелизм внутри одного run НЕ реализуется (deterministic-first).
 
 ### ClickHouse
 
@@ -314,14 +330,15 @@ flowchart LR
 
 | Критерий | Привязка |
 |---|---|
-| JSON Schema DSL v1 опубликована и лежит в CP; `POST /strategy-versions` валидирует тело | **SKELETON DONE** (schema v1 + README); активация валидатора — TODO |
-| Схема PG в CP приведена в соответствие с Go-кодом (стратегии/эксперименты/runs) | **DONE** (миграция 000006 подключена, dead `001_init_schema.sql` удалён); осталось прогнать cold-start на чистой БД |
-| ClickHouse содержит `backtest_run_summaries` + `backtest_trades` + `backtest_equity_curve` + `backtest_run_metrics` с партиционированием | **SKELETON DONE** (DDL в 002), наполнение из engine — TODO |
+| JSON Schema DSL v1 опубликована и лежит в CP; `POST /strategy-versions` валидирует тело | **DONE** (schema + validator + tests + wired, `422` на невалидный DSL) |
+| ADR-004 v2 + каркас schema v2 опубликованы под review (композируемый AST, entries[]/exits[], feature_requirements, position/risk/portfolio/time/execution) | **DONE — DRAFT** |
+| Схема PG в CP приведена в соответствие с Go-кодом (стратегии/эксперименты/runs) | **DONE** (миграция 000006 подключена, dead `001_init_schema.sql` удалён, cold-start + migrate up прогон пройден) |
+| ClickHouse содержит `backtest_run_summaries` + `backtest_trades` + `backtest_equity_curve` + `backtest_run_metrics` с партиционированием | **DONE — DDL и deterministic placeholder writer пишет все 4 таблицы;** реальное наполнение из нормального симулятора — TODO |
 | backtest-engine читает feature parquet из MinIO по `dataset_id` | TODO |
 | backtest-engine интерпретирует DSL-блоки `instrument_scope/entry/exit/filters/risk/execution` и прогоняет симуляцию детерминированно | TODO |
 | События `bt.*` end-to-end с идемпотентностью: повторный `bt.run.requested` с тем же `run_id` не создаёт дубль | IN PROGRESS (durable + `DeliverNew` уже есть, нужно покрыть сценарий) |
-| control-plane корректно финализирует `experiment_run` на `bt.run.completed`/`failed` с сохранением `result` | DONE (consumer есть, надо сверить payload shape после обогащения) |
-| control-desktop: полная атомарная архитектура `atoms → molecules → organisms → screens`; inline-HTML только в organisms/molecules | **IN PROGRESS** (слои есть, screens ещё не рефакторены) |
+| control-plane корректно финализирует `experiment_run` на `bt.run.completed`/`failed` с сохранением `result` (единственный владелец terminal state) | DONE (consumer есть, надо сверить payload shape после обогащения) |
+| control-desktop: полная атомарная архитектура `atoms → molecules → organisms → screens`; inline-HTML только в organisms/molecules | **DONE** (screens переписаны на `orgPage` + organism-карточки, inline-HTML вынесен) |
 | control-desktop: пользовательский сценарий «данные → фичи → поставить run → увидеть результат» без CLI | IN PROGRESS (данные и фичи — работает; run/result — зависит от готовности engine) |
 | Документация в `docs/` обновлена (integration-map, event-catalog, и при появлении CH-схемы — ADR) | Ongoing |
 | Смоук e2e-скрипт для этапа 3 проходит в корне репо | TODO |
