@@ -38,13 +38,17 @@ v1 сохраняется в проекте навсегда — как дешё
 1. **Композируемая AST условий.**
    Все gate-предикаты (`entries[].when`, `exits[].kind=opposite_signal.params.when`, `risk_management.kill_switch_conditions`, `position_management.scale_in[].trigger`, `scale_out[].trigger`) — это один и тот же `conditionNode`:
    ```text
-   conditionNode := composite | scalar | cross_feature | membership | crossover | const
-   composite     := { "op": "all|any|not", "operands": [conditionNode, ...] }
-   scalar        := { "feature": "<ref>", "cmp": "lt|lte|gt|gte|eq|neq", "value": <literal> }
-   cross_feature := { "feature": "<ref>", "cmp": "...", "value_from": "<ref>" }
-   membership    := { "feature": "<ref>", "cmp": "in|not_in", "values": [...] }
-   crossover     := { "crossover": { "fast": "<ref>", "slow": "<ref>", "direction": "up|down" } }
-   const         := { "const": true|false }
+   conditionNode   := composite | scalar | cross_feature | membership | crossover | const
+   composite       := { "op": "all|any|not", "operands": [conditionNode, ...] }
+   scalar          := { "feature": <featureSelector>, "cmp": "lt|lte|gt|gte|eq|neq", "value": <literal> }
+   cross_feature   := { "feature": <featureSelector>, "cmp": "...", "value_from": <featureSelector> }
+   membership      := { "feature": <featureSelector>, "cmp": "in|not_in", "values": [...] }
+   crossover       := { "crossover": { "fast": <featureSelector>, "slow": <featureSelector>, "direction": "up|down" } }
+   const           := { "const": true|false }
+
+   featureSelector := { "name": "<lower_snake>", "symbol"?: "<UPPER>", "timeframe"?: "<Nm|Nh|Nd>",
+                        "source"?: "feature|trade|mark|funding" }
+   literal         := number | boolean | string    // anyOf — integer валиден как number
    ```
    Встроенного language-парсера (формул типа `"ema(20) > ema(50) && rsi(14) < 30"`) **нет**. Только типизированный AST: он валидируется JSON Schema, стабильно сериализуется, просто компилируется и диагностически понятен.
 
@@ -61,21 +65,32 @@ v1 сохраняется в проекте навсегда — как дешё
    `max_positions_per_symbol`, `pyramiding_allowed`, `reverse_on_opposite_signal`, `scale_in[]`, `scale_out[]`, `partial_take_profit[]`. Раньше всего этого не было вообще.
 
 5. **`portfolio_constraints` существует даже для single-symbol ранов.**
-   `max_gross_exposure`, `max_per_symbol_exposure`, `leverage_cap`, `max_symbols_open`. Когда появится multi-symbol, схема не меняется — двигается только engine.
+   `max_gross_exposure_ppm`, `max_per_symbol_exposure_ppm`, `leverage_cap_x1000`, `max_symbols_open`. Когда появится multi-symbol, схема не меняется — двигается только engine.
 
-6. **`execution` — это модели, а не числа.**
-   `fee_model: bps_flat | maker_taker`, `slippage_model: fixed_bps | volume_scaled`, `fill_model: next_bar_open | same_bar_close`, `latency_model: none | fixed_ms`, плюс `market_order_policy` и `limit_order_policy`. Flat пары `fee_bps/slippage_bps` из v1 становятся частным случаем.
+6. **`execution` — это модели, а не числа, с единым источником правды о fill.**
+   `fee_model: bps_flat | maker_taker`, `slippage_model: fixed_bps | volume_scaled` (последнее — через integer `bps_per_million_notional`), `fill_model: next_bar_open | same_bar_close`, `latency_model: none | fixed_ms`, плюс `market_order_policy` и `limit_order_policy`.
+   **`fill_model` живёт только глобально** в `execution`: в `orderSpec.market` намеренно нет `fill_mode`, чтобы не было двух источников правды про одно и то же решение. Если когда-нибудь понадобится per-entry override, это будет отдельное поле `fill_override` с явным именем, а не «второй такой же параметр».
 
 7. **`time_constraints` первоклассно.**
-   Торговые окна по ISO-weekday + UTC часу, `skip_around_funding_minutes` (для фьючей), `max_holding_bars`, `block_last_minutes_of_session`.
+   Торговые окна по ISO-weekday + UTC часу, `skip_around_funding_minutes` (для фьючей), **`hard_max_holding_bars`** (глобальный hard-cap, отличный от per-exit `time_stop.max_holding_bars`), `block_last_minutes_of_session`.
 
-8. **`feature_requirements.required_features` обязателен.**
-   DSL явно декларирует, какие колонки ему нужны. Engine до запуска bar loop проверяет, что все они есть в связанном feature-датасете; при несовпадении run завершается как `failed` с `reason: feature_missing`, а не считается наугад.
+8. **`feature_requirements.required_features` обязателен, `featureSelector` — структурный.**
+   DSL явно декларирует, какие колонки ему нужны. Engine до запуска bar loop резолвит каждый `featureSelector` в конкретный column index; при несовпадении run завершается как `failed` с `reason: feature_missing`. Структура `featureSelector = { name, symbol?, timeframe?, source? }` даёт нативную поддержку multi-timeframe / cross-symbol / mark-vs-trade-vs-funding без плоских string-хаков вида `btcusdt_5m_ema_20_trade`. `source` по умолчанию — `"feature"` (precomputed feature-builder output); значения `"trade"`, `"mark"`, `"funding"` используются, когда стратегии действительно важно различить источник.
 
-9. **Все относительные величины — целое bps.**
-   `100 bps = 1%`. Не `float`. Это гарантирует одинаковую арифметику в Go, ClickHouse и GUI и убирает drift на сравнениях.
+9. **`valuation` — обязательный top-level блок.**
+   `entry_price_source ∈ { trade_close, next_bar_open, mark_close }`, `exit_trigger_price_source ∈ { trade, mark }`, `mark_to_market_price_source ∈ { trade, mark }`, `funding_application ∈ { enabled, disabled }`, `funding_price_source ∈ { mark, dataset_mark_price }`. На фьючах это критично: TP/SL/trailing могут триггериться по trade или по mark — это два очень разных бэктеста. Движок обязан получать ответ из DSL, а не угадывать. Для spot `funding_application` должен быть `"disabled"` (проверяется семантически).
 
-10. **`additionalProperties: false` везде.**
+10. **Все относительные величины — целые integer-scaled units.**
+    - `bps` (basis points, 1 bps = 1e-4) — для SL/TP/fee/slippage/risk_bps;
+    - `ppm` (parts-per-million, 1 ppm = 1e-6) — для fractions (sizing `fraction_ppm`, `partial_take_profit.fraction_ppm`, `scale_out.fraction_ppm`) и exposure (`max_gross_exposure_ppm`, `max_per_symbol_exposure_ppm`);
+    - `x1000` — для leverage (`leverage_cap_x1000`, 1000 = 1x, 125_000 = 125x) и generic multipliers (`atr_multiplier_x1000`);
+    - `float` допустим **только** для абсолютных notional'ов (`fixed_notional.notional`, `market_order_policy.max_size_notional`), потому что это абсолютные суммы в quote-currency, а не ratio.
+    Смешанного «где-то bps, где-то 0..1 float» больше нет. Это делает арифметику бит-идентичной между Go, ClickHouse и GUI и убирает дрейф на сравнениях равенства.
+
+11. **`scalarLiteral` — `anyOf`, не `oneOf`.**
+    JSON Schema считает integer одновременно валидным `integer` и `number`. При `oneOf: [number, integer, ...]` часть валидных значений становилась невалидной чисто из-за схемы. В v2 литералы — `anyOf: [number, boolean, string]`: integer живёт внутри `number`, ambiguity убирается.
+
+12. **`additionalProperties: false` везде.**
     Неизвестное поле — ошибка, а не no-op. Схема строгая по построению; всё расширение идёт через новые поля в schema, а не через «вот тут что-то ещё лежит».
 
 ### Разделение DSL и runtime plan
@@ -92,6 +107,42 @@ v2 намеренно **не** рассчитан на интерпретаци�
 3. После этого bar loop работает с **скомпилированным планом**, не с JSON.
 
 Формально: DSL — это input, а не hot-path данные. Композитная AST допустима именно потому, что мы её компилируем один раз.
+
+### Semantic validator (обязательный, часть контракта v2)
+
+JSON Schema закрывает форму. Но ряд инвариантов — cross-field и не выражается JSON Schema без боли. Поэтому контракт v2 включает semantic validator, который запускается после schema-валидации и в control-plane (`POST /strategy-versions`), и в backtest-engine (на consume — defence-in-depth). Обязательный перечень проверок:
+
+1. `entries[].id` уникальны; `exits[].id` уникальны.
+2. `exits[i].applies_to` (если не `"all"`) содержит только существующие `entries[j].id`.
+3. Каждый `featureSelector`, встреченный в AST (entry `when`, exit params, kill-switch, scale-in triggers, sizing, regime/volatility exits), задекларирован в `feature_requirements.required_features` или `optional_features`.
+4. Если хоть один `entries[i].side == "short"`, то `execution.allow_short == true`.
+5. Market-type когерентность:
+    - `market_type == "futures"` требует `contract_type`;
+    - `market_type == "spot"` запрещает `contract_type`;
+    - `market_type == "spot"` требует `valuation.funding_application == "disabled"`;
+    - `portfolio_constraints.leverage_cap_x1000` запрещён для spot;
+    - `time_constraints.skip_around_funding_minutes` запрещён для spot;
+    - `valuation.exit_trigger_price_source == "mark"` и `mark_to_market_price_source == "mark"` запрещены для spot.
+6. Если `position_management.pyramiding_allowed == false`, то `position_management.scale_in[]` должен быть пустым.
+7. Сумма всех `partial_take_profit[].fraction_ppm` ≤ `1_000_000`.
+8. Если заданы и `time_constraints.hard_max_holding_bars`, и `time_stop` exit(ы), каждое `time_stop.params.max_holding_bars` ≤ `hard_max_holding_bars`.
+9. Когерентность fill-модели и valuation: `valuation.entry_price_source == "next_bar_open"` ↔ `execution.fill_model.kind == "next_bar_open"`; `trade_close` / `mark_close` ↔ `same_bar_close`.
+10. Symbol-qualified selectors: в single-symbol раунах `featureSelector.symbol`, не совпадающий с `instrument_scope.symbols[0]` — ошибка; в multi-symbol раунах отсутствие `symbol` — ошибка (некуда резолвить).
+11. Нет дубликатов `required_features[]` по tuple `(name, symbol, timeframe, source)` после подстановки defaults.
+
+Нарушения в control-plane — `422 Unprocessable Entity` с `{error, issues[]}`, аналогично v1. Нарушения в engine — `bt.run.failed` с типизированным `reason` (`semantic_invalid`, `feature_missing`, `valuation_data_missing`, ...).
+
+### Precedence rules (иерархия решений)
+
+Когда несколько слоёв DSL могут повлиять на один исход, порядок авторитетности такой (выше по списку — выше авторитет):
+
+1. **Kill-switch > всё остальное.** Триггер любого `risk_management.kill_switch_conditions` — engine флэтит все позиции и больше не открывает новых до конца run.
+2. **Hard global caps > per-rule caps.** `time_constraints.hard_max_holding_bars` — абсолютный потолок. `time_stop` exit с меньшим значением всё ещё действует локально, но ни одно per-exit значение не может превысить hard-cap (проверяется semantic validator'ом).
+3. **Exits > entries.** На каждом баре exit-триггеры оцениваются до новых entries. Одновременный entry-сигнал на только что закрытой позиции на том же баре подавляется; `cooldown_bars` (если задан) стартует со следующего бара.
+4. **Priority между entries.** Когда несколько `entries[]` стреляют на одном баре и ёмкость ограничена (`max_open_trades` / `max_symbols_open`), выигрывает больший `priority`; при равенстве — стабильный порядок в массиве `entries[]`.
+5. **Per-entry `size` > `risk_management.default_size`.** Если задано и то, и то — выигрывает per-entry; `default_size` — fallback только там, где entry не указал свой.
+6. **Глобальный `execution` > per-entry override.** В v2.0 per-entry override'ов нет. Если когда-то потребуется, это будет явное поле (например `fill_override`), переопределяющее именно глобал для конкретного entry, без дублирования имени.
+7. **`valuation` — не договорной на runtime.** Engine не подставляет молча другую price source, даже если данных для заявленной не хватает — это hard-fail `bt.run.failed` с `reason: valuation_data_missing`.
 
 ### Runtime-инварианты (за пределами schema, но часть ADR)
 
@@ -117,7 +168,7 @@ Engine не владеет бизнес-жизненным циклом run. Э�
 
 ## Пример v2 (упрощённо)
 
-См. `services/control-plane/schemas/strategy/v2/strategy.schema.json -> examples[0]`. Суть: одна `entries[]`-запись с композитным `when` (crossover EMA ∧ RSI gate ∧ regime whitelist), четыре `exits[]` (TP, SL, trailing, time), ATR-sized вход, risk/drawdown caps, portfolio constraints, funding blackout, явные fee/slippage/fill/latency модели.
+См. `services/control-plane/schemas/strategy/v2/strategy.schema.json -> examples[0]`. Суть: одна `entries[]`-запись с композитным `when` (crossover EMA на 5m ∧ RSI gate на 1m ∧ regime whitelist ∧ funding-pressure filter через `featureSelector.source="funding"`), четыре `exits[]` (TP, SL, trailing, time), ATR-sized вход через `atr_multiplier_x1000`, risk/drawdown caps в bps, portfolio constraints в ppm/x1000, funding blackout, явный `valuation` (entry @ next_bar_open, stops/MTM @ mark, funding enabled) и явные fee/slippage/fill/latency модели. Пример валидируется schema'ой «как есть» — это smoke-проверка при правках.
 
 ## Последствия
 
@@ -131,11 +182,14 @@ Engine не владеет бизнес-жизненным циклом run. Э�
 
 ## Migration path v1 → v2 (engineering)
 
-1. Сначала ADR-004 v2 одобрен, schema v2 стабилизирована (фиксация полей, примеров, граничных случаев).
-2. В `control-plane`: добавить `schemas/strategy/v2/validator.go` + `validator_test.go` по образцу v1; расширить `NewHandlers` и `CreateStrategyVersion`, чтобы диспатчить по `schema_version`.
-3. В `backtest-engine`: compile DSL → internal plan; dispatch по major-версии (v1 → legacy executor, v2 → новый executor).
+1. Сначала ADR-004 v2 одобрен, schema v2 стабилизирована (фиксация полей, примеров, semantic validator checklist, precedence rules, граничных случаев).
+2. В `control-plane`: добавить
+    - `schemas/strategy/v2/validator.go` + `validator_test.go` (JSON Schema валидация, mirror v1)
+    - `schemas/strategy/v2/semantic.go` + `semantic_test.go` (cross-field проверки из списка выше)
+    Расширить `NewHandlers` и `CreateStrategyVersion`, чтобы диспатчить по `schema_version`: `^1\.` → `dslv1`, `^2\.` → `dslv2` (schema + semantic последовательно; ответ `422 {error, issues[]}` в обоих случаях).
+3. В `backtest-engine`: compile DSL → internal plan; dispatch по major-версии (v1 → legacy executor, v2 → новый executor, включающий semantic-валидацию на consume).
 4. После того как v2 executor стабилен, в документации стратегии для пользователя рекомендовать `2.x.y`. v1 остаётся поддерживаемым, но «older path».
-5. Любые расширения v2 (новые `exits[].kind`, новые `size.kind`, новые execution-модели) идут как minor-bump `schema_version` (`2.1.0`, `2.2.0`), обязаны быть backward-compatible. Breaking — только `3.x.y` в `schemas/strategy/v3/`.
+5. Любые расширения v2 (новые `exits[].kind`, новые `size.kind`, новые execution-модели, новые source'ы в `featureSelector`) идут как minor-bump `schema_version` (`2.1.0`, `2.2.0`), обязаны быть backward-compatible. Breaking — только `3.x.y` в `schemas/strategy/v3/`.
 
 ## Ссылки
 
