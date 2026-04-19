@@ -46,8 +46,10 @@ v1 сохраняется в проекте навсегда — как дешё
    crossover       := { "crossover": { "fast": <featureSelector>, "slow": <featureSelector>, "direction": "up|down" } }
    const           := { "const": true|false }
 
-   featureSelector := { "name": "<lower_snake>", "symbol"?: "<UPPER>", "timeframe"?: "<Nm|Nh|Nd>",
-                        "source"?: "feature|trade|mark|funding" }
+   featureSelector := { "name":       "<lower_snake>",
+                        "symbol"?:    "<UPPER>",
+                        "timeframe"?: "1m|5m|15m|1h|4h|1d",
+                        "namespace"?: "feature|trade|mark|funding|index" }
    literal         := number | boolean | string    // anyOf — integer валиден как number
    ```
    Встроенного language-парсера (формул типа `"ema(20) > ema(50) && rsi(14) < 30"`) **нет**. Только типизированный AST: он валидируется JSON Schema, стабильно сериализуется, просто компилируется и диагностически понятен.
@@ -75,10 +77,10 @@ v1 сохраняется в проекте навсегда — как дешё
    Торговые окна по ISO-weekday + UTC часу, `skip_around_funding_minutes` (для фьючей), **`hard_max_holding_bars`** (глобальный hard-cap, отличный от per-exit `time_stop.max_holding_bars`), `block_last_minutes_of_session`.
 
 8. **`feature_requirements.required_features` обязателен, `featureSelector` — структурный.**
-   DSL явно декларирует, какие колонки ему нужны. Engine до запуска bar loop резолвит каждый `featureSelector` в конкретный column index; при несовпадении run завершается как `failed` с `reason: feature_missing`. Структура `featureSelector = { name, symbol?, timeframe?, source? }` даёт нативную поддержку multi-timeframe / cross-symbol / mark-vs-trade-vs-funding без плоских string-хаков вида `btcusdt_5m_ema_20_trade`. `source` по умолчанию — `"feature"` (precomputed feature-builder output); значения `"trade"`, `"mark"`, `"funding"` используются, когда стратегии действительно важно различить источник.
+   DSL явно декларирует, какие колонки ему нужны. Engine до запуска bar loop резолвит каждый `featureSelector` в конкретный column index; при несовпадении run завершается как `failed` с `reason: feature_missing`. Структура `featureSelector = { name, symbol?, timeframe?, namespace? }` даёт нативную поддержку multi-timeframe / cross-symbol / trade-vs-mark-vs-funding-vs-index без плоских string-хаков вида `btcusdt_5m_ema_20_trade`. Поле называется `namespace`, а не `source`, специально чтобы не конфликтовать с «price source» в `valuation`: семантика у них разная. `namespace` по умолчанию — `"feature"` (precomputed feature-builder output); значения `"trade" | "mark" | "funding" | "index"` используются, когда стратегии действительно важно различить семейство колонок (mark-price stop, funding-pressure filter, index-basis signal). `timeframe` — enum `1m | 5m | 15m | 1h | 4h | 1d`, без открытого regex: лучше рефузить несуществующий timeframe на уровне схемы, чем на уровне рантайма.
 
-9. **`valuation` — обязательный top-level блок.**
-   `entry_price_source ∈ { trade_close, next_bar_open, mark_close }`, `exit_trigger_price_source ∈ { trade, mark }`, `mark_to_market_price_source ∈ { trade, mark }`, `funding_application ∈ { enabled, disabled }`, `funding_price_source ∈ { mark, dataset_mark_price }`. На фьючах это критично: TP/SL/trailing могут триггериться по trade или по mark — это два очень разных бэктеста. Движок обязан получать ответ из DSL, а не угадывать. Для spot `funding_application` должен быть `"disabled"` (проверяется семантически).
+9. **`valuation` — обязательный top-level блок, и он несёт ТОЛЬКО price source'ы, не fill timing.**
+   `entry_trigger_price_source ∈ { trade, mark, index }`, `exit_trigger_price_source ∈ { trade, mark, index }`, `mark_to_market_price_source ∈ { trade, mark, index }`, `funding_application ∈ { enabled, disabled }`, `funding_price_source ∈ { mark, index }`. Fill TIMING (same_bar_close / next_bar_open) — это отдельный слой в `execution.fill_model`: смешивать «по какой цене мы триггеримся/оцениваемся» и «на каком баре происходит fill» — значит потом получать стратегии, где одновременно написано `entry_price_source: next_bar_open` и `fill_model: same_bar_close`, и объяснять, что из этого выиграло. В v2 эти решения разделены физически. На фьючах это критично: TP/SL/trailing могут триггериться по trade, по mark или по index — это три разных бэктеста. Движок обязан получать ответ из DSL, а не угадывать. `funding_application: disabled` на фьючах — явно research / what-if режим, не production-realistic (это зафиксировано в README и проверяется только warning'ом, не hard error'ом). Для spot `funding_application` должен быть `"disabled"` (проверяется семантически).
 
 10. **Все относительные величины — целые integer-scaled units.**
     - `bps` (basis points, 1 bps = 1e-4) — для SL/TP/fee/slippage/risk_bps;
@@ -110,11 +112,13 @@ v2 намеренно **не** рассчитан на интерпретаци�
 
 ### Semantic validator (обязательный, часть контракта v2)
 
-JSON Schema закрывает форму. Но ряд инвариантов — cross-field и не выражается JSON Schema без боли. Поэтому контракт v2 включает semantic validator, который запускается после schema-валидации и в control-plane (`POST /strategy-versions`), и в backtest-engine (на consume — defence-in-depth). Обязательный перечень проверок:
+JSON Schema закрывает форму. Но ряд инвариантов — cross-field и не выражается JSON Schema без боли. Поэтому контракт v2 включает semantic validator, который запускается после schema-валидации и в control-plane (`POST /strategy-versions`), и в backtest-engine (на consume — defence-in-depth). Проверки делятся на **hard errors** (реджектят стратегию / run) и **warnings** (принимаем, но возвращаем в ответе). Hard error в control-plane — `422 Unprocessable Entity` с `{error, issues[]}`; в engine — `bt.run.failed` с типизированным `reason` (`semantic_invalid`, `feature_missing`, `valuation_data_missing`, …). Warnings не меняют исход, но возвращаются в том же envelope под ключом `warnings[]`.
+
+#### Hard errors (reject)
 
 1. `entries[].id` уникальны; `exits[].id` уникальны.
 2. `exits[i].applies_to` (если не `"all"`) содержит только существующие `entries[j].id`.
-3. Каждый `featureSelector`, встреченный в AST (entry `when`, exit params, kill-switch, scale-in triggers, sizing, regime/volatility exits), задекларирован в `feature_requirements.required_features` или `optional_features`.
+3. **Feature closure (обязательно).** Каждый `featureSelector`, встреченный где угодно в AST (entry `when`, exit params, kill-switch, scale-in / scale-out triggers, sizing, regime/volatility exits), после подстановки defaults (`namespace="feature"`, `timeframe=instrument_scope.interval`, `symbol=instrument_scope.symbols[0]` для single-symbol ранов) должен быть **покрыт** записью в `feature_requirements.required_features`. Отсутствие покрытия — hard error, не «как-нибудь потерпим»: иначе теряется главная гарантия v2 — «совместимость стратегии с датасетом решается до bar loop».
 4. Если хоть один `entries[i].side == "short"`, то `execution.allow_short == true`.
 5. Market-type когерентность:
     - `market_type == "futures"` требует `contract_type`;
@@ -122,15 +126,25 @@ JSON Schema закрывает форму. Но ряд инвариантов �
     - `market_type == "spot"` требует `valuation.funding_application == "disabled"`;
     - `portfolio_constraints.leverage_cap_x1000` запрещён для spot;
     - `time_constraints.skip_around_funding_minutes` запрещён для spot;
-    - `valuation.exit_trigger_price_source == "mark"` и `mark_to_market_price_source == "mark"` запрещены для spot.
+    - `valuation.exit_trigger_price_source == "mark"` и `mark_to_market_price_source == "mark"` запрещены для spot;
+    - `valuation.funding_price_source` игнорируется для spot (и при `funding_application == "disabled"`), но всё ещё обязан быть валидным enum-значением.
 6. Если `position_management.pyramiding_allowed == false`, то `position_management.scale_in[]` должен быть пустым.
 7. Сумма всех `partial_take_profit[].fraction_ppm` ≤ `1_000_000`.
 8. Если заданы и `time_constraints.hard_max_holding_bars`, и `time_stop` exit(ы), каждое `time_stop.params.max_holding_bars` ≤ `hard_max_holding_bars`.
-9. Когерентность fill-модели и valuation: `valuation.entry_price_source == "next_bar_open"` ↔ `execution.fill_model.kind == "next_bar_open"`; `trade_close` / `mark_close` ↔ `same_bar_close`.
-10. Symbol-qualified selectors: в single-symbol раунах `featureSelector.symbol`, не совпадающий с `instrument_scope.symbols[0]` — ошибка; в multi-symbol раунах отсутствие `symbol` — ошибка (некуда резолвить).
-11. Нет дубликатов `required_features[]` по tuple `(name, symbol, timeframe, source)` после подстановки defaults.
+9. Нет дубликатов `required_features[]` по tuple `(name, symbol, timeframe, namespace)` после подстановки defaults.
+10. **Multi-symbol selector resolvability (conditional).** В раунах с `instrument_scope.symbols.length > 1` любой `featureSelector` без явного `symbol` — hard error (engine не может однозначно резолвить instrument). В single-symbol раунах это правило не применяется (см. warning S1).
 
-Нарушения в control-plane — `422 Unprocessable Entity` с `{error, issues[]}`, аналогично v1. Нарушения в engine — `bt.run.failed` с типизированным `reason` (`semantic_invalid`, `feature_missing`, `valuation_data_missing`, ...).
+Заметим, что прошлой версии было правило «когерентность fill-модели и valuation» — оно убрано намеренно. После разделения `valuation` (price source) и `execution.fill_model` (fill timing) у них больше нет общей оси, которую нужно синхронизировать: это две независимые проекции решения, и semantic validator'у нечего тут enforce'ить.
+
+#### Warnings (accept, но surface)
+
+- **S1. Избыточный `symbol` в single-symbol ране.** В ране с одним символом `featureSelector.symbol = instrument_scope.symbols[0]` допустим, но лишний: warning. Если `symbol` не совпадает с `symbols[0]` — это уже hard error (селектор нерезолвим).
+- **S2. `optional_features` без fallback-site.** На v2.0 ни один узел AST не имеет документированного «молча пропустить» поведения. Значит `optional_features[]` пока — чистая документация; warning напоминает: пока это не реальный fallback.
+- **S3. `funding_application: disabled` на фьючах.** Валидный research / what-if режим, но не production-realistic для перпов: warning, чтобы никто не выдавал результаты таких ранов за «как стратегия реально торгует».
+- **S4. Per-exit `time_stop` ≥ `hard_max_holding_bars`.** Не ошибка (hard cap всё равно победит), но per-exit значение становится no-op: warning, что оно не имеет эффекта.
+- **S5. Несколько entries с `cooldown_bars == 0` и `priority == 0`.** При одновременном срабатывании решает стабильный порядок в массиве — поведение детерминированное, но скорее всего это не то, что имел в виду автор: warning.
+
+Открытый вопрос (пока не правило, но зафиксирован в README): warning при комбинации `valuation.entry_trigger_price_source == "mark"` + `execution.fill_model.kind == "same_bar_close"` — обсуждается перед freeze.
 
 ### Precedence rules (иерархия решений)
 
@@ -168,7 +182,7 @@ Engine не владеет бизнес-жизненным циклом run. Э�
 
 ## Пример v2 (упрощённо)
 
-См. `services/control-plane/schemas/strategy/v2/strategy.schema.json -> examples[0]`. Суть: одна `entries[]`-запись с композитным `when` (crossover EMA на 5m ∧ RSI gate на 1m ∧ regime whitelist ∧ funding-pressure filter через `featureSelector.source="funding"`), четыре `exits[]` (TP, SL, trailing, time), ATR-sized вход через `atr_multiplier_x1000`, risk/drawdown caps в bps, portfolio constraints в ppm/x1000, funding blackout, явный `valuation` (entry @ next_bar_open, stops/MTM @ mark, funding enabled) и явные fee/slippage/fill/latency модели. Пример валидируется schema'ой «как есть» — это smoke-проверка при правках.
+См. `services/control-plane/schemas/strategy/v2/strategy.schema.json -> examples[0]`. Суть: одна `entries[]`-запись с композитным `when` (crossover EMA на 5m ∧ RSI gate на 1m ∧ regime whitelist ∧ funding-pressure filter через `featureSelector.namespace="funding"`), отдельный mark-price feature (`namespace="mark"`) для trigger-прайса стопов, четыре `exits[]` (TP, SL, trailing, time), ATR-sized вход через `atr_multiplier_x1000`, risk/drawdown caps в bps, portfolio constraints в ppm/x1000, funding blackout. Явный `valuation`: entry триггерится по `trade`, exit-триггеры и MTM по `mark`, funding enabled, funding price — `mark`. Отдельно (в `execution`) — `fill_model: next_bar_open`: fill timing намеренно отделён от price source'ов. Пример валидируется schema'ой «как есть» и покрывается smoke-тестом при правках (позитив + негативы по каждому enum).
 
 ## Последствия
 
@@ -189,7 +203,7 @@ Engine не владеет бизнес-жизненным циклом run. Э�
     Расширить `NewHandlers` и `CreateStrategyVersion`, чтобы диспатчить по `schema_version`: `^1\.` → `dslv1`, `^2\.` → `dslv2` (schema + semantic последовательно; ответ `422 {error, issues[]}` в обоих случаях).
 3. В `backtest-engine`: compile DSL → internal plan; dispatch по major-версии (v1 → legacy executor, v2 → новый executor, включающий semantic-валидацию на consume).
 4. После того как v2 executor стабилен, в документации стратегии для пользователя рекомендовать `2.x.y`. v1 остаётся поддерживаемым, но «older path».
-5. Любые расширения v2 (новые `exits[].kind`, новые `size.kind`, новые execution-модели, новые source'ы в `featureSelector`) идут как minor-bump `schema_version` (`2.1.0`, `2.2.0`), обязаны быть backward-compatible. Breaking — только `3.x.y` в `schemas/strategy/v3/`.
+5. Любые расширения v2 (новые `exits[].kind`, новые `size.kind`, новые execution-модели, новые значения `featureSelector.namespace`, новые значения price source'ов в `valuation`) идут как minor-bump `schema_version` (`2.1.0`, `2.2.0`), обязаны быть backward-compatible. Breaking — только `3.x.y` в `schemas/strategy/v3/`.
 
 ## Ссылки
 
