@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Совместимость: Docker-тома full-stack + TEMP\algorhythm-dev (без данных GUI на диске и без Roaming).
 

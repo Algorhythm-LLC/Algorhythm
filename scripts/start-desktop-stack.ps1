@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Одна точка входа: поднять инфраструктуру Docker, control-plane (API + worker),
   market-data-ingestor worker, дождаться готовности API, собрать control-desktop и открыть GUI.

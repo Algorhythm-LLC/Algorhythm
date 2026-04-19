@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Cold reset: Docker full-stack volumes + local dev artifacts on this PC.
 

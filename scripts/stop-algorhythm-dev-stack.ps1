@@ -1,4 +1,4 @@
-# Dot-source only: helpers for start-desktop-stack.ps1 and reset scripts.
+﻿# Dot-source only: helpers for start-desktop-stack.ps1 and reset scripts.
 # ASCII-only console text: Windows PowerShell 5.1 reads scripts as system ANSI if no BOM.
 # . (Join-Path $PSScriptRoot "stop-algorhythm-dev-stack.ps1")
 

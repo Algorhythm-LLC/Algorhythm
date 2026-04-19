@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Короткая точка входа из корня репозитория: то же, что .\scripts\start-desktop-stack.ps1
 

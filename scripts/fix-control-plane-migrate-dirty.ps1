@@ -1,4 +1,4 @@
-# Dev-only: clear golang-migrate "dirty" flag after a failed migration (e.g. BOM in SQL).
+﻿# Dev-only: clear golang-migrate "dirty" flag after a failed migration (e.g. BOM in SQL).
 # Resets recorded version to 2 so migration 000003 runs again (ALTER ... IF NOT EXISTS is safe).
 #
 # Usage: .\scripts\fix-control-plane-migrate-dirty.ps1

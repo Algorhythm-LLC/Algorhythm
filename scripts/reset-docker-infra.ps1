@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Сброс данных только инфраструктуры Docker (ops/full-stack): именованные тома Postgres, MinIO, ClickHouse, NATS, Qdrant.
 

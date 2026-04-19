@@ -1,4 +1,4 @@
-# E2E: backfill trade_klines (1m) через control-plane -> NATS -> market-data-ingestor.
+﻿# E2E: backfill trade_klines (1m) через control-plane -> NATS -> market-data-ingestor.
 # Smoke: статус job=completed, backfill_stats.total_rows в допустимых границах (толеранс к «дырам» биржи), min_ts/max_ts.
 # Опционально -DeepValidation: после completed вызывает MDI POST /api/v1/jobs/validate-dataset (нужен -Register и dataset_id в job.result).
 #

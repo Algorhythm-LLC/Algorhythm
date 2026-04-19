@@ -1,4 +1,4 @@
-<#
+﻿<#
   Копирует проверенный снимок Local Archive в каталог imports/ локальной папки данных
   и проверяет manifest.json (schema v1, app_id algorhythm).
 
