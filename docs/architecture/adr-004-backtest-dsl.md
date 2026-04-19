@@ -3,7 +3,7 @@
 ## Статус
 
 - **v1:** Принято. Frozen MVP. Валидируется `control-plane` (`services/control-plane/schemas/strategy/v1`).
-- **v2:** Предложено (DRAFT). Каркас схемы опубликован в `services/control-plane/schemas/strategy/v2`. Рантайма нет, валидатор не активирован. Текущий ADR описывает обе версии и правила перехода.
+- **v2:** **ACCEPTED (schema contract).** **Runtime support: pending.** Схема и semantic checklist зафиксированы в `services/control-plane/schemas/strategy/v2`, `control-plane` диспатчит валидацию по `schema_version` (`^1\.` → `dslv1`, `^2\.` → `dslv2`). Engine-runtime (`backtest-engine`) для v2 ещё не написан: принятая схема — это **контракт под реализацию**, а не «уже исполняется». Любые правки после этого статуса идут только как backward-compatible minor-bumps (`2.1.x`, `2.2.x`); breaking-изменения — только `v3`.
 
 ## Контекст
 
