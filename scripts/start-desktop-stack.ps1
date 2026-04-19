@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Одна точка входа: поднять инфраструктуру Docker, control-plane (API + worker),
   market-data-ingestor worker, дождаться готовности API, собрать control-desktop и открыть GUI.
@@ -48,6 +48,7 @@ $LogRoot = Join-Path $env:TEMP "algorhythm-dev"
 $LogDir = Join-Path $LogRoot "logs"
 # Имя без префикса Pid*: иначе $PidFile читается как $Pid + "File" (встроенная переменная).
 $StackPidFile = Join-Path $LogRoot "stack_pids.json"
+. (Join-Path $PSScriptRoot "stop-algorhythm-dev-stack.ps1")
 
 function Write-Step([string]$msg) {
     Write-Host "`n=== $msg ===" -ForegroundColor Cyan
@@ -112,59 +113,6 @@ function Wait-Readyz {
     throw "Таймаут: $base/readyz не ответил за $TimeoutSec с. См. логи в $LogDir"
 }
 
-function Test-TcpListen([int]$Port) {
-    $c = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-    return $null -ne $c
-}
-
-function Stop-ListenersOnPort([int]$Port) {
-    $seen = @{}
-    $conns = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
-    foreach ($c in $conns) {
-        $procId = $c.OwningProcess
-        if ($procId -le 0 -or $seen.ContainsKey($procId)) { continue }
-        $seen[$procId] = $true
-        $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
-        $name = if ($proc) { $proc.ProcessName } else { "?" }
-        Write-Host "  Освобождаю порт ${Port}: останавливаю PID $procId ($name)" -ForegroundColor Yellow
-        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-    }
-}
-
-function Stop-StackFromPidFile([string]$Path) {
-    if (-not (Test-Path $Path)) { return }
-    try {
-        $j = Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json
-    } catch {
-        return
-    }
-    foreach ($prop in @("control_plane_api", "control_plane_worker", "mdi_worker")) {
-        $id = $j.$prop
-        if ($null -eq $id) { continue }
-        try {
-            $pidInt = [int]$id
-        } catch {
-            continue
-        }
-        if ($pidInt -le 0) { continue }
-        $proc = Get-Process -Id $pidInt -ErrorAction SilentlyContinue
-        if (-not $proc) { continue }
-        Write-Host "  Останавливаю предыдущий стек: $prop (PID $pidInt, $($proc.ProcessName))" -ForegroundColor Yellow
-        Stop-Process -Id $pidInt -Force -ErrorAction SilentlyContinue
-    }
-}
-
-function Wait-PortFree([int]$Port, [int]$TimeoutSec) {
-    $deadline = (Get-Date).AddSeconds($TimeoutSec)
-    while ((Get-Date) -lt $deadline) {
-        if (-not (Test-TcpListen -Port $Port)) {
-            return
-        }
-        Start-Sleep -Milliseconds 400
-    }
-    throw "Порт $Port всё ещё занят после остановки процессов. Закройте приложение вручную или используйте -NoStop и задайте другой CP_HTTP_PORT."
-}
-
 # --- main ---
 Write-Step "Корень репозитория: $RepoRoot"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -204,6 +152,10 @@ $ControlPlaneUrl = "http://localhost:$cpPort"
 if (-not $NoStop) {
     Write-Host "Перезапуск стека: останавливаю предыдущие процессы (если были)…" -ForegroundColor DarkGray
     Stop-StackFromPidFile -Path $StackPidFile
+    Stop-ProcessesExecutableUnderCpAndMdiServices -RepoRoot $RepoRoot -Quiet
+    Stop-GoProcessesForRepo -RepoRoot $RepoRoot -Quiet
+    Stop-ProcessesUsingAlgorhythmDevTemp -Quiet
+    Stop-GoBuildTempExecutables -Quiet
     if (Test-TcpListen -Port $cpPort) {
         Stop-ListenersOnPort -Port $cpPort
         Wait-PortFree -Port $cpPort -TimeoutSec 20
@@ -212,14 +164,16 @@ if (-not $NoStop) {
     throw "Порт $cpPort занят. Уберите -NoStop для автоматической остановки или освободите порт вручную."
 }
 
-$pApi = Start-Process -FilePath $goExe -ArgumentList @("run", "./cmd/api") -WorkingDirectory $CpDir `
+$cpApiPkg = (Resolve-Path (Join-Path $CpDir "cmd\api")).Path
+$cpWrkPkg = (Resolve-Path (Join-Path $CpDir "cmd\worker")).Path
+$pApi = Start-Process -FilePath $goExe -ArgumentList @("run", $cpApiPkg) -WorkingDirectory $CpDir `
     -RedirectStandardOutput (Join-Path $LogDir "control-plane-api.log") `
     -RedirectStandardError (Join-Path $LogDir "control-plane-api.err") `
     -PassThru -WindowStyle Hidden
 
 Start-Sleep -Milliseconds 500
 
-$pWrk = Start-Process -FilePath $goExe -ArgumentList @("run", "./cmd/worker") -WorkingDirectory $CpDir `
+$pWrk = Start-Process -FilePath $goExe -ArgumentList @("run", $cpWrkPkg) -WorkingDirectory $CpDir `
     -RedirectStandardOutput (Join-Path $LogDir "control-plane-worker.log") `
     -RedirectStandardError (Join-Path $LogDir "control-plane-worker.err") `
     -PassThru -WindowStyle Hidden
@@ -229,7 +183,8 @@ foreach ($k in [Environment]::GetEnvironmentVariables("Process").Keys) {
     if ($k -like "CP_*") { [Environment]::SetEnvironmentVariable($k, $null, "Process") }
 }
 Import-DotEnv (Join-Path $MdiDir ".env")
-$pMdi = Start-Process -FilePath $goExe -ArgumentList @("run", "./cmd/worker") -WorkingDirectory $MdiDir `
+$mdiWrkPkg = (Resolve-Path (Join-Path $MdiDir "cmd\worker")).Path
+$pMdi = Start-Process -FilePath $goExe -ArgumentList @("run", $mdiWrkPkg) -WorkingDirectory $MdiDir `
     -RedirectStandardOutput (Join-Path $LogDir "market-data-ingestor-worker.log") `
     -RedirectStandardError (Join-Path $LogDir "market-data-ingestor-worker.err") `
     -PassThru -WindowStyle Hidden
@@ -258,7 +213,7 @@ if (-not $SkipBuild) {
     Write-Step "Сборка Wails (control-desktop)"
     $wails = Get-Command wails -ErrorAction SilentlyContinue
     if (-not $wails) {
-        Write-Host "wails не в PATH — используем go run для CLI Wails" -ForegroundColor Yellow
+        Write-Host "wails не в PATH - используем go run для CLI Wails" -ForegroundColor Yellow
         & go run github.com/wailsapp/wails/v2/cmd/wails@latest build
     } else {
         Push-Location $DesktopDir
@@ -271,7 +226,7 @@ if (-not $SkipBuild) {
 
 $exe = Join-Path $DesktopDir "build\bin\control-desktop.exe"
 if (-not (Test-Path $exe)) {
-    throw "Не найден $exe — уберите -SkipBuild или соберите вручную (wails build)."
+    throw "Не найден $exe - уберите -SkipBuild или соберите вручную (wails build)."
 }
 
 if (-not $NoGui) {

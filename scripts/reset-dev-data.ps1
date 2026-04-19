@@ -1,12 +1,15 @@
-# Полный сброс данных dev-стенда Algorhythm (Windows, PowerShell).
-# Удаляет именованные Docker-тома full-stack: MinIO, Postgres, ClickHouse, NATS, Qdrant.
-# НЕ трогает настройки control-desktop в AppData — только инфраструктура и temp PIDs стека.
-#
-# Использование:
-#   .\scripts\reset-dev-data.ps1 -Force
-#
-# После сброса: поднять стенд снова (например scripts\up-full-stack.ps1 или start-desktop-stack.ps1).
+<#
+.SYNOPSIS
+  Совместимость: Docker-тома full-stack + TEMP\algorhythm-dev (без данных GUI на диске и без Roaming).
 
+.DESCRIPTION
+  Для более узкого или полного сброса используйте:
+  - .\scripts\reset-docker-infra.ps1 - только контейнеры/тома Docker;
+  - .\scripts\reset-cold-start.ps1 - Docker + локальный ПК (данные сборки, опционально настройки).
+
+.EXAMPLE
+  .\scripts\reset-dev-data.ps1 -Force
+#>
 param(
     [switch]$Force
 )
@@ -14,33 +17,36 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not $Force) {
-    Write-Error "Destructive: removes Docker full-stack volumes. Pass -Force."
+    Write-Error "Уничтожает тома Docker и TEMP\algorhythm-dev. Укажите -Force."
     exit 1
 }
 
-$OpsDir = Join-Path $PSScriptRoot "..\ops\full-stack"
-if (-not (Test-Path (Join-Path $OpsDir "docker-compose.yml"))) {
-    Write-Error "ops/full-stack/docker-compose.yml not found."
-    exit 1
-}
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "stop-algorhythm-dev-stack.ps1")
+Invoke-AlgorhythmDevStackCleanup -RepoRoot $RepoRoot
 
-Push-Location $OpsDir
-try {
-    docker compose down -v
-    Write-Host "docker compose down -v OK (volumes removed)."
-}
-finally {
-    Pop-Location
-}
+& "$PSScriptRoot\reset-docker-infra.ps1" -Force
 
 $DevTemp = Join-Path $env:TEMP "algorhythm-dev"
 if (Test-Path $DevTemp) {
-    try {
-        Remove-Item -Recurse -Force $DevTemp -ErrorAction Stop
-        Write-Host "Removed: $DevTemp"
-    } catch {
-        Write-Warning "Could not remove $DevTemp (file in use). Stop stack/desktop processes and delete manually, or retry."
+    $devTempGone = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        if ($attempt -gt 1) {
+            Write-Host "Повтор после остановки стека ($attempt/3)..." -ForegroundColor Yellow
+            Invoke-AlgorhythmDevStackCleanup -RepoRoot $RepoRoot -Quiet
+            Start-Sleep -Seconds 2
+        }
+        if (Remove-AlgorhythmDevTempTree -Path $DevTemp) {
+            $devTempGone = $true
+            Write-Host "Удалено: $DevTemp" -ForegroundColor Green
+            break
+        }
+    }
+    if (-not $devTempGone) {
+        Write-Host "Diagnostics:" -ForegroundColor Yellow
+        Show-AlgorhythmDevLockSuspects -Hint "lock on $DevTemp" -Path $DevTemp
+        Write-Warning "Не удалось удалить $DevTemp после повторов (файл занят)."
     }
 }
 
-Write-Host "Done. Start the stack again (e.g. scripts\up-full-stack.ps1)."
+Write-Host "Готово (Docker + TEMP). Полный холодный старт ПК: .\scripts\reset-cold-start.ps1 -Force"

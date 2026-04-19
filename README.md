@@ -95,6 +95,8 @@ go test -count=1 ./internal/e2eexpect/...
 
 ## Документация
 
-- [Технический устав](trading_platform_technical_charter.md)
-- [docs/](docs/) — архитектура, ADR, API
-- [TODO.md](TODO.md) — план разработки
+- [docs/project-spec.md](docs/project-spec.md) — хаб: цель, архитектура, roadmap, статус-дашборд всех этапов
+- [docs/stages/](docs/stages/) — подробная спека по каждому этапу (1–5)
+- [docs/architecture/](docs/architecture/) — ADR (модель данных, границы сервисов, DSL, и т.д.)
+- [docs/api/](docs/api/) — каталог событий NATS и карта интеграций
+- [Технический устав](trading_platform_technical_charter.md) — обязательный регламент
