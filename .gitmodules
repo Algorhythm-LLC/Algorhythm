@@ -14,3 +14,6 @@
 [submodule "services/backtest-engine"]
 	path = services/backtest-engine
 	url = https://github.com/Froloveee3/algorhythm-backtest-engine.git
+[submodule "modules/strategy-dsl"]
+	path = modules/strategy-dsl
+	url = https://github.com/Froloveee3/strategy-dsl.git
