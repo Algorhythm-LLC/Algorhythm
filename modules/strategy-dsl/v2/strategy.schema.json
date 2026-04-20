@@ -1,0 +1,1098 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://algorhythm.dev/schemas/strategy/v2/strategy.schema.json",
+  "title": "Algorhythm Strategy DSL v2",
+  "description": "Declarative trading strategy format, structured AST. Source of truth: ADR-004 v2 and Technical Charter §8. Backtest engine is the only interpreter. STATUS: ACCEPTED as a schema contract — control-plane validates 2.x.y payloads via the dslv2 package; backtest-engine runtime support is pending. Any change from here on is a backward-compatible minor bump or a new major (v3).",
+  "$comment": "ACCEPTED schema contract. Runtime (engine execution of v2) is pending — do not assume a v2 strategy runs yet.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "strategy_code",
+    "instrument_scope",
+    "feature_requirements",
+    "entries",
+    "exits",
+    "risk_management",
+    "valuation",
+    "execution"
+  ],
+
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^2\\.\\d+\\.\\d+$",
+      "description": "Strict semver scoped to this schema major. v2 accepts 2.x.y."
+    },
+    "strategy_code": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_]{1,62}[a-z0-9]$",
+      "description": "Stable lowercase snake_case identifier, must match strategy_templates.code."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Free-form human summary; not parsed by the engine."
+    },
+    "instrument_scope":     { "$ref": "#/$defs/instrumentScope" },
+    "feature_requirements": { "$ref": "#/$defs/featureRequirements" },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/entryRule" }
+    },
+    "exits": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/exitRule" }
+    },
+    "position_management":   { "$ref": "#/$defs/positionManagement" },
+    "risk_management":       { "$ref": "#/$defs/riskManagement" },
+    "portfolio_constraints": { "$ref": "#/$defs/portfolioConstraints" },
+    "time_constraints":      { "$ref": "#/$defs/timeConstraints" },
+    "valuation":             { "$ref": "#/$defs/valuation" },
+    "execution":             { "$ref": "#/$defs/execution" }
+  },
+
+  "$defs": {
+
+    "featureName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+      "description": "Logical name of a feature (e.g. 'ema_20'). Must be valid inside the selected source namespace."
+    },
+
+    "symbolRef": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]{2,20}$"
+    },
+
+    "timeframeRef": {
+      "type": "string",
+      "enum": ["1m", "5m", "15m", "1h", "4h", "1d"],
+      "description": "Supported feature timeframes. Deliberately narrower than 'any Nm|Nh|Nd pattern' so runtime never has to refuse a schema-valid value. Seconds are out of scope (raw layer is minute-granular); weeks/months can be derived from 1d / 4h aggregations without a dedicated field in v2."
+    },
+
+    "featureSelector": {
+      "description": "Structured reference to a feature column. 'name' is the only required field. Optional axes let strategies address multi-timeframe / cross-symbol / mark-vs-trade-vs-funding-vs-index columns without encoding everything in a flat string.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name":      { "$ref": "#/$defs/featureName" },
+        "symbol": {
+          "$ref": "#/$defs/symbolRef",
+          "description": "Optional. Resolves to a specific instrument column. When omitted in a single-symbol run, the run's symbol is used. When omitted in a multi-symbol run, the selector is ambiguous and the semantic validator rejects it."
+        },
+        "timeframe": {
+          "$ref": "#/$defs/timeframeRef",
+          "description": "Optional. Defaults to the instrument_scope.interval of the run."
+        },
+        "namespace": {
+          "type": "string",
+          "enum": ["feature", "trade", "mark", "funding", "index"],
+          "description": "Optional column family (named 'namespace' rather than 'source' to avoid conflation with 'price source' in the valuation block). Defaults to 'feature' (precomputed feature-builder output). 'trade' / 'mark' / 'funding' / 'index' point at raw price-stream families when the strategy genuinely needs that distinction (e.g. mark-price-triggered stop, funding-pressure filter, basis signal off index vs mark)."
+        }
+      }
+    },
+
+    "comparator": {
+      "type": "string",
+      "enum": ["lt", "lte", "gt", "gte", "eq", "neq"],
+      "description": "Scalar comparison. Uses symbolic names to keep the schema transport-safe (no '<' / '>' glyphs)."
+    },
+
+    "membershipComparator": {
+      "type": "string",
+      "enum": ["in", "not_in"]
+    },
+
+    "scalarLiteral": {
+      "description": "A literal that can be compared against a feature value. `anyOf` is intentional (not `oneOf`): JSON Schema treats every integer as a valid `number`, so `oneOf` with both would be ambiguous. Integers are covered by the `number` branch; booleans and strings are distinct.",
+      "anyOf": [
+        { "type": "number"  },
+        { "type": "boolean" },
+        { "type": "string"  }
+      ]
+    },
+
+    "conditionNode": {
+      "description": "Composable AST node. Engine must produce a compiled plan from this tree at run start and never re-parse during the bar loop.",
+      "oneOf": [
+        { "$ref": "#/$defs/cond_composite" },
+        { "$ref": "#/$defs/cond_scalar" },
+        { "$ref": "#/$defs/cond_cross_feature" },
+        { "$ref": "#/$defs/cond_membership" },
+        { "$ref": "#/$defs/cond_crossover" },
+        { "$ref": "#/$defs/cond_const" }
+      ]
+    },
+
+    "cond_composite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "operands"],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": ["all", "any", "not"]
+        },
+        "operands": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/conditionNode" }
+        }
+      },
+      "allOf": [
+        {
+          "if":   { "properties": { "op": { "const": "not" } } },
+          "then": { "properties": { "operands": { "maxItems": 1 } } }
+        }
+      ]
+    },
+
+    "cond_scalar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature", "cmp", "value"],
+      "properties": {
+        "feature": { "$ref": "#/$defs/featureSelector" },
+        "cmp":     { "$ref": "#/$defs/comparator" },
+        "value":   { "$ref": "#/$defs/scalarLiteral" }
+      }
+    },
+
+    "cond_cross_feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature", "cmp", "value_from"],
+      "properties": {
+        "feature":    { "$ref": "#/$defs/featureSelector" },
+        "cmp":        { "$ref": "#/$defs/comparator" },
+        "value_from": { "$ref": "#/$defs/featureSelector" }
+      }
+    },
+
+    "cond_membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature", "cmp", "values"],
+      "properties": {
+        "feature": { "$ref": "#/$defs/featureSelector" },
+        "cmp":     { "$ref": "#/$defs/membershipComparator" },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/scalarLiteral" }
+        }
+      }
+    },
+
+    "cond_crossover": {
+      "description": "Domain sugar: fast crosses slow in the given direction on the current bar.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["crossover"],
+      "properties": {
+        "crossover": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fast", "slow", "direction"],
+          "properties": {
+            "fast":      { "$ref": "#/$defs/featureSelector" },
+            "slow":      { "$ref": "#/$defs/featureSelector" },
+            "direction": { "type": "string", "enum": ["up", "down"] }
+          }
+        }
+      }
+    },
+
+    "cond_const": {
+      "description": "Placeholder / always-true / always-false node. Useful for staged rollout or disabled rules.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["const"],
+      "properties": {
+        "const": { "type": "boolean" }
+      }
+    },
+
+    "instrumentScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exchange", "symbols", "market_type", "interval"],
+      "properties": {
+        "exchange": {
+          "type": "string",
+          "enum": ["binance"]
+        },
+        "symbols": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/symbolRef" }
+        },
+        "market_type": {
+          "type": "string",
+          "enum": ["spot", "futures"]
+        },
+        "contract_type": {
+          "type": "string",
+          "enum": ["perpetual", "quarterly"],
+          "description": "Only meaningful when market_type = futures. Semantic validator: required for futures, forbidden for spot."
+        },
+        "interval": {
+          "type": "string",
+          "enum": ["1m"],
+          "description": "Run's base timeframe. Only 1m is supported in v2.0; other intervals are intentionally deferred. Multi-timeframe features are addressed via featureSelector.timeframe, not by changing this."
+        }
+      }
+    },
+
+    "featureRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_features"],
+      "properties": {
+        "required_features": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/featureSelector" },
+          "description": "Engine rejects the run if any of these selectors cannot be bound to a concrete column in the feature dataset. Semantic validator additionally enforces that every selector used anywhere in the AST is declared here."
+        },
+        "optional_features": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/featureSelector" },
+          "description": "Nice-to-have columns; used if present, otherwise the strategy must still be well-defined without them."
+        }
+      }
+    },
+
+    "bpsInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "description": "Basis points as integer. 1 bp = 1e-4 = 0.01%; so 10000 bps = 100%."
+    },
+
+    "fractionPpm": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "description": "Fraction in parts-per-million, 1_000_000 ppm = 100%. Replaces the old float fraction representation so arithmetic stays deterministic across Go, ClickHouse, and GUI."
+    },
+
+    "exposurePpm": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100000000,
+      "description": "Exposure as ppm of equity (multiplier × 1e6). 1_000_000 = 1x equity, 1_500_000 = 1.5x, etc. Max allows 100x caps for futures-heavy scenarios."
+    },
+
+    "leverageX1000": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 125000,
+      "description": "Leverage × 1000. 1000 = 1x, 3000 = 3x, 125000 = 125x. Meaningful only for futures market_type (semantic validator enforces)."
+    },
+
+    "multiplierX1000": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000,
+      "description": "Generic positive multiplier × 1000. 1000 = 1.000x, 500 = 0.500x, 1500 = 1.500x. Used e.g. for ATR-based sizing."
+    },
+
+    "sizeSpec": {
+      "description": "How much to trade on entry. Falls back to risk_management.default_size if omitted on an entry rule.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "params"],
+          "properties": {
+            "kind":   { "const": "fixed_fraction" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fraction_ppm"],
+              "properties": {
+                "fraction_ppm": { "$ref": "#/$defs/fractionPpm" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "params"],
+          "properties": {
+            "kind":   { "const": "fixed_notional" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["notional"],
+              "properties": {
+                "notional": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Absolute notional in quote currency (USDT)."
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "params"],
+          "properties": {
+            "kind":   { "const": "risk_target" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["risk_bps", "stop_distance_feature"],
+              "properties": {
+                "risk_bps":              { "$ref": "#/$defs/bpsInteger" },
+                "stop_distance_feature": { "$ref": "#/$defs/featureSelector" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "params"],
+          "properties": {
+            "kind":   { "const": "atr_based" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["atr_feature", "atr_multiplier_x1000", "risk_bps"],
+              "properties": {
+                "atr_feature":          { "$ref": "#/$defs/featureSelector" },
+                "atr_multiplier_x1000": { "$ref": "#/$defs/multiplierX1000" },
+                "risk_bps":             { "$ref": "#/$defs/bpsInteger" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "orderSpec": {
+      "description": "How the order is placed on entry. Fill semantics (same_bar_close / next_bar_open) live globally in execution.fill_model — there is intentionally no per-entry fill_mode to avoid two sources of truth. Latency / slippage / fees are also global.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "market" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "params"],
+          "properties": {
+            "type":   { "const": "limit" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["offset_bps", "expiry_bars"],
+              "properties": {
+                "offset_bps":  { "$ref": "#/$defs/bpsInteger" },
+                "expiry_bars": { "type": "integer", "minimum": 1, "maximum": 100000 },
+                "fill_policy": {
+                  "type": "string",
+                  "enum": ["partial_allowed", "all_or_none"]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "entryRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "side", "when", "order"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_]{0,62}$",
+          "description": "Unique within entries[]. Referenced by exits[].applies_to and position_management."
+        },
+        "side": {
+          "type": "string",
+          "enum": ["long", "short"]
+        },
+        "when":     { "$ref": "#/$defs/conditionNode" },
+        "order":    { "$ref": "#/$defs/orderSpec" },
+        "size":     { "$ref": "#/$defs/sizeSpec" },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "default": 0,
+          "description": "When multiple entry rules fire on the same bar, higher priority wins within capacity."
+        },
+        "cooldown_bars": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "default": 0,
+          "description": "After this rule fires, suppress it for N bars."
+        },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          }
+        }
+      }
+    },
+
+    "exitRule": {
+      "description": "Discriminated by `kind`. Each variant owns its own params schema.",
+      "type": "object",
+      "required": ["id", "kind", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_]{0,62}$"
+        },
+        "applies_to": {
+          "oneOf": [
+            { "const": "all" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string" }
+            }
+          ],
+          "default": "all",
+          "description": "Either the string 'all' or an explicit list of entry rule ids."
+        }
+      },
+
+      "oneOf": [
+        {
+          "properties": {
+            "kind":   { "const": "take_profit" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["take_profit_bps"],
+              "properties": {
+                "take_profit_bps": { "$ref": "#/$defs/bpsInteger" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind":   { "const": "stop_loss" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["stop_loss_bps"],
+              "properties": {
+                "stop_loss_bps": { "$ref": "#/$defs/bpsInteger" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind":   { "const": "trailing_stop" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["trail_bps"],
+              "properties": {
+                "trail_bps":         { "$ref": "#/$defs/bpsInteger" },
+                "activate_after_bps": { "$ref": "#/$defs/bpsInteger" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind":   { "const": "time_stop" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["max_holding_bars"],
+              "properties": {
+                "max_holding_bars": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000,
+                  "description": "Per-exit cap. Must be <= time_constraints.hard_max_holding_bars if both are set (semantic validator)."
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind":   { "const": "break_even" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["trigger_bps"],
+              "properties": {
+                "trigger_bps": { "$ref": "#/$defs/bpsInteger" },
+                "offset_bps":  { "$ref": "#/$defs/bpsInteger" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind":   { "const": "opposite_signal" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["when"],
+              "properties": {
+                "when": { "$ref": "#/$defs/conditionNode" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind":   { "const": "regime_exit" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["feature", "exit_when_in"],
+              "properties": {
+                "feature":      { "$ref": "#/$defs/featureSelector" },
+                "exit_when_in": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "$ref": "#/$defs/scalarLiteral" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind":   { "const": "volatility_exit" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["feature", "cmp", "value"],
+              "properties": {
+                "feature": { "$ref": "#/$defs/featureSelector" },
+                "cmp":     { "$ref": "#/$defs/comparator" },
+                "value":   { "$ref": "#/$defs/scalarLiteral" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "scaleInRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trigger", "size"],
+      "properties": {
+        "trigger":  { "$ref": "#/$defs/conditionNode" },
+        "size":     { "$ref": "#/$defs/sizeSpec" },
+        "max_adds": { "type": "integer", "minimum": 1, "maximum": 100, "default": 1 }
+      }
+    },
+
+    "scaleOutRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trigger", "fraction_ppm"],
+      "properties": {
+        "trigger":       { "$ref": "#/$defs/conditionNode" },
+        "fraction_ppm":  { "$ref": "#/$defs/fractionPpm" }
+      }
+    },
+
+    "partialTakeProfitRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at_profit_bps", "fraction_ppm"],
+      "properties": {
+        "at_profit_bps": { "$ref": "#/$defs/bpsInteger" },
+        "fraction_ppm":  { "$ref": "#/$defs/fractionPpm" }
+      }
+    },
+
+    "positionManagement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_positions_per_symbol": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 1
+        },
+        "pyramiding_allowed": {
+          "type": "boolean",
+          "default": false
+        },
+        "reverse_on_opposite_signal": {
+          "type": "boolean",
+          "default": false
+        },
+        "scale_in": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/scaleInRule" }
+        },
+        "scale_out": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/scaleOutRule" }
+        },
+        "partial_take_profit": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/partialTakeProfitRule" }
+        }
+      }
+    },
+
+    "riskManagement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_size"],
+      "properties": {
+        "default_size": { "$ref": "#/$defs/sizeSpec" },
+        "daily_loss_limit_bps":  { "$ref": "#/$defs/bpsInteger" },
+        "max_drawdown_stop_bps": { "$ref": "#/$defs/bpsInteger" },
+        "max_open_trades": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Cap on concurrent trades across all entry rules."
+        },
+        "kill_switch_conditions": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/conditionNode" },
+          "description": "If any node fires, the engine flats all positions and halts new entries for the rest of the run."
+        }
+      }
+    },
+
+    "portfolioConstraints": {
+      "description": "Architecturally required even for single-symbol runs so multi-symbol extension does not reshape the schema. All caps are ppm / × 1000 integers for determinism.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_gross_exposure_ppm":     { "$ref": "#/$defs/exposurePpm" },
+        "max_per_symbol_exposure_ppm": { "$ref": "#/$defs/exposurePpm" },
+        "leverage_cap_x1000":         { "$ref": "#/$defs/leverageX1000" },
+        "max_symbols_open": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      }
+    },
+
+    "tradingWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["days_of_week", "start_utc", "end_utc"],
+      "properties": {
+        "days_of_week": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 1, "maximum": 7 },
+          "description": "ISO-8601 weekday numbers: 1=Mon .. 7=Sun."
+        },
+        "start_utc": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "end_utc": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        }
+      }
+    },
+
+    "timeConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trading_windows": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/tradingWindow" },
+          "description": "If present and non-empty, entries may fire only inside one of these windows."
+        },
+        "skip_around_funding_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 240,
+          "description": "For futures: block new entries N minutes before and after a funding event. Semantic validator rejects this for spot."
+        },
+        "hard_max_holding_bars": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000,
+          "description": "Hard global cap on position holding duration; independent of per-exit time_stop. If both are set, time_stop.max_holding_bars must be <= this value."
+        },
+        "block_last_minutes_of_session": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1440
+        }
+      }
+    },
+
+    "valuation": {
+      "description": "Futures-aware valuation contract. Fixes WHICH KIND OF PRICE (trade / mark / index) drives which event. Deliberately does NOT describe fill timing — that lives in execution.fill_model. Keeping the two concerns separate avoids conflating 'at which bar do we fill' with 'against which price stream do we settle / trigger / value positions'. Required at top level for every v2 strategy. Semantic validator enforces market-type coherence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_trigger_price_source",
+        "exit_trigger_price_source",
+        "mark_to_market_price_source",
+        "funding_application",
+        "funding_price_source"
+      ],
+      "properties": {
+        "entry_trigger_price_source": {
+          "type": "string",
+          "enum": ["trade", "mark", "index"],
+          "description": "Which price stream the engine reads to evaluate the entry's `when` and to record the entry price of the fill. Fill TIMING (same_bar_close vs next_bar_open) is orthogonal and lives in execution.fill_model."
+        },
+        "exit_trigger_price_source": {
+          "type": "string",
+          "enum": ["trade", "mark", "index"],
+          "description": "Which price stream drives TP/SL/trailing/break_even triggers. On perps, 'mark' matches the exchange liquidation engine; 'trade' matches how most retail platforms render triggers. 'index' is for strategies that explicitly want the external index benchmark (e.g. arbitrage logic)."
+        },
+        "mark_to_market_price_source": {
+          "type": "string",
+          "enum": ["trade", "mark", "index"],
+          "description": "Which price stream drives the equity curve and unrealized PnL at each bar."
+        },
+        "funding_application": {
+          "type": "string",
+          "enum": ["enabled", "disabled"],
+          "description": "Whether funding cashflows affect realized PnL and equity at each funding event. 'disabled' is a RESEARCH / what-if mode, explicitly NOT a production-realistic setting for perps — it is useful to decompose performance sensitivity to funding but must never be shipped as 'how the strategy really performs'. Must be 'disabled' for spot (enforced semantically)."
+        },
+        "funding_price_source": {
+          "type": "string",
+          "enum": ["mark", "index"],
+          "description": "Which price stream multiplies the funding rate into a cashflow. Ignored when funding_application = 'disabled'."
+        }
+      }
+    },
+
+    "feeModel": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "params"],
+          "properties": {
+            "kind":   { "const": "bps_flat" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fee_bps"],
+              "properties": {
+                "fee_bps": { "$ref": "#/$defs/bpsInteger" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "params"],
+          "properties": {
+            "kind":   { "const": "maker_taker" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["maker_bps", "taker_bps"],
+              "properties": {
+                "maker_bps": { "$ref": "#/$defs/bpsInteger" },
+                "taker_bps": { "$ref": "#/$defs/bpsInteger" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "slippageModel": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "params"],
+          "properties": {
+            "kind":   { "const": "fixed_bps" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["slippage_bps"],
+              "properties": {
+                "slippage_bps": { "$ref": "#/$defs/bpsInteger" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "params"],
+          "properties": {
+            "kind":   { "const": "volume_scaled" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["base_bps", "bps_per_million_notional"],
+              "properties": {
+                "base_bps": { "$ref": "#/$defs/bpsInteger" },
+                "bps_per_million_notional": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000,
+                  "description": "Additional slippage (bps) per 1_000_000 units of notional above zero. Integer-scaled to keep arithmetic deterministic."
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "fillModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["next_bar_open", "same_bar_close"],
+          "description": "Global fill semantics. There is no per-entry override in v2.0 — add one via a dedicated 'fill_override' field in a minor bump when a concrete use case appears."
+        }
+      }
+    },
+
+    "latencyModel": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "none" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "params"],
+          "properties": {
+            "kind":   { "const": "fixed_ms" },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["delay_ms"],
+              "properties": {
+                "delay_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fee_model", "slippage_model", "fill_model", "allow_short"],
+      "properties": {
+        "fee_model":      { "$ref": "#/$defs/feeModel" },
+        "slippage_model": { "$ref": "#/$defs/slippageModel" },
+        "fill_model":     { "$ref": "#/$defs/fillModel" },
+        "latency_model":  { "$ref": "#/$defs/latencyModel" },
+        "allow_short":    { "type": "boolean" },
+        "market_order_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allow":              { "type": "boolean", "default": true },
+            "max_size_notional":  {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Absolute cap in quote currency (USDT). Notionals are accepted as number because they are absolute amounts, not relative ratios; the determinism discipline applies to fractions/exposures/leverage, which are integer-scaled."
+            }
+          }
+        },
+        "limit_order_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allow":              { "type": "boolean", "default": true },
+            "default_offset_bps": { "$ref": "#/$defs/bpsInteger" }
+          }
+        }
+      }
+    }
+  },
+
+  "examples": [
+    {
+      "schema_version": "2.0.0",
+      "strategy_code": "ema_rsi_breakout_v2",
+      "description": "EMA crossover entry with RSI gate, regime whitelist and funding-pressure filter; TP + SL + trailing + time stop; ATR-based sizing; pyramiding off; shorts off; mark-price triggered stops.",
+      "instrument_scope": {
+        "exchange": "binance",
+        "symbols": ["BTCUSDT"],
+        "market_type": "futures",
+        "contract_type": "perpetual",
+        "interval": "1m"
+      },
+      "feature_requirements": {
+        "required_features": [
+          { "name": "ema_20",               "timeframe": "5m"                        },
+          { "name": "ema_50",               "timeframe": "5m"                        },
+          { "name": "rsi_14",               "timeframe": "1m"                        },
+          { "name": "regime_1m",            "timeframe": "1m"                        },
+          { "name": "atr_14",               "timeframe": "1m"                        },
+          { "name": "funding_rate_current", "namespace": "funding"                   },
+          { "name": "mark_close",           "namespace": "mark",  "timeframe": "1m"  }
+        ]
+      },
+      "entries": [
+        {
+          "id": "long_breakout",
+          "side": "long",
+          "when": {
+            "op": "all",
+            "operands": [
+              {
+                "crossover": {
+                  "fast": { "name": "ema_20", "timeframe": "5m" },
+                  "slow": { "name": "ema_50", "timeframe": "5m" },
+                  "direction": "up"
+                }
+              },
+              {
+                "feature": { "name": "rsi_14", "timeframe": "1m" },
+                "cmp": "gt",
+                "value": 30000
+              },
+              {
+                "feature": { "name": "regime_1m", "timeframe": "1m" },
+                "cmp": "in",
+                "values": ["trend_up", "range"]
+              },
+              {
+                "feature": { "name": "funding_rate_current", "namespace": "funding" },
+                "cmp": "lt",
+                "value": 15
+              }
+            ]
+          },
+          "order": { "type": "market" },
+          "priority": 10,
+          "cooldown_bars": 15,
+          "tags": ["breakout", "mvp"]
+        }
+      ],
+      "exits": [
+        {
+          "id": "tp_1",
+          "kind": "take_profit",
+          "params": { "take_profit_bps": 400 },
+          "applies_to": ["long_breakout"]
+        },
+        {
+          "id": "sl_1",
+          "kind": "stop_loss",
+          "params": { "stop_loss_bps": 150 },
+          "applies_to": "all"
+        },
+        {
+          "id": "trail_1",
+          "kind": "trailing_stop",
+          "params": { "trail_bps": 120, "activate_after_bps": 200 },
+          "applies_to": "all"
+        },
+        {
+          "id": "time_1",
+          "kind": "time_stop",
+          "params": { "max_holding_bars": 240 },
+          "applies_to": "all"
+        }
+      ],
+      "position_management": {
+        "max_positions_per_symbol": 1,
+        "pyramiding_allowed": false,
+        "reverse_on_opposite_signal": false
+      },
+      "risk_management": {
+        "default_size": {
+          "kind": "atr_based",
+          "params": {
+            "atr_feature": { "name": "atr_14", "timeframe": "1m" },
+            "atr_multiplier_x1000": 2000,
+            "risk_bps": 100
+          }
+        },
+        "daily_loss_limit_bps": 500,
+        "max_drawdown_stop_bps": 2000,
+        "max_open_trades": 4
+      },
+      "portfolio_constraints": {
+        "max_gross_exposure_ppm":      1500000,
+        "max_per_symbol_exposure_ppm": 1000000,
+        "leverage_cap_x1000":          3000,
+        "max_symbols_open":            4
+      },
+      "time_constraints": {
+        "skip_around_funding_minutes": 5,
+        "hard_max_holding_bars":       480
+      },
+      "valuation": {
+        "entry_trigger_price_source":  "trade",
+        "exit_trigger_price_source":   "mark",
+        "mark_to_market_price_source": "mark",
+        "funding_application":         "enabled",
+        "funding_price_source":        "mark"
+      },
+      "execution": {
+        "fee_model":      { "kind": "bps_flat",      "params": { "fee_bps": 10 } },
+        "slippage_model": { "kind": "fixed_bps",     "params": { "slippage_bps": 5 } },
+        "fill_model":     { "kind": "next_bar_open" },
+        "latency_model":  { "kind": "none" },
+        "allow_short":    false
+      }
+    }
+  ]
+}

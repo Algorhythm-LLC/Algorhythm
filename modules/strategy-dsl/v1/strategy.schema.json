@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://algorhythm.dev/schemas/strategy/v1/strategy.schema.json",
+  "title": "Algorhythm Strategy DSL v1",
+  "description": "Declarative trading strategy format, validated before being persisted as a strategy_version. Source of truth: Technical Charter §8 and ADR-004. Backtest engine is the only interpreter.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "strategy_code",
+    "instrument_scope",
+    "entry",
+    "exit",
+    "risk",
+    "execution"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$",
+      "description": "Strict semver scoped to this schema major. v1 accepts 1.x.y."
+    },
+    "strategy_code": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_]{1,62}[a-z0-9]$",
+      "description": "Stable lowercase snake_case identifier, must match strategy_templates.code."
+    },
+    "instrument_scope": {
+      "type": "object",
+      "required": ["exchange", "symbols"],
+      "additionalProperties": false,
+      "properties": {
+        "exchange": {
+          "type": "string",
+          "enum": ["binance"]
+        },
+        "symbols": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{2,20}$"
+          }
+        }
+      }
+    },
+    "entry": { "$ref": "#/$defs/entryBlock" },
+    "exit": { "$ref": "#/$defs/exitBlock" },
+    "filters": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/$defs/filterBlock" }
+    },
+    "risk": { "$ref": "#/$defs/riskBlock" },
+    "execution": { "$ref": "#/$defs/executionBlock" }
+  },
+  "$defs": {
+    "typedBlock": {
+      "type": "object",
+      "required": ["type", "params"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "params": { "type": "object" }
+      }
+    },
+    "entryBlock": {
+      "allOf": [
+        { "$ref": "#/$defs/typedBlock" },
+        {
+          "properties": {
+            "type": {
+              "enum": ["indicator_condition", "price_breakout"]
+            }
+          }
+        }
+      ]
+    },
+    "exitBlock": {
+      "allOf": [
+        { "$ref": "#/$defs/typedBlock" },
+        {
+          "properties": {
+            "type": {
+              "enum": ["tp_sl", "trailing_stop", "time_based"]
+            }
+          }
+        }
+      ]
+    },
+    "filterBlock": {
+      "allOf": [
+        { "$ref": "#/$defs/typedBlock" },
+        {
+          "properties": {
+            "type": {
+              "enum": ["regime_filter", "volatility_filter"]
+            }
+          }
+        }
+      ]
+    },
+    "riskBlock": {
+      "allOf": [
+        { "$ref": "#/$defs/typedBlock" },
+        {
+          "properties": {
+            "type": {
+              "enum": ["fixed_fraction", "fixed_amount"]
+            }
+          }
+        }
+      ]
+    },
+    "executionBlock": {
+      "type": "object",
+      "required": ["fee_bps", "slippage_bps", "allow_short"],
+      "additionalProperties": false,
+      "properties": {
+        "fee_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Exchange + taker fee per side, basis points."
+        },
+        "slippage_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Assumed slippage per fill, basis points."
+        },
+        "allow_short": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0.0",
+      "strategy_code": "ema_rsi_breakout",
+      "instrument_scope": {
+        "exchange": "binance",
+        "symbols": ["BTCUSDT", "ETHUSDT"]
+      },
+      "entry": {
+        "type": "indicator_condition",
+        "params": {
+          "left": "ema_20_gt_ema_50",
+          "right": "rsi_14_lt_30000"
+        }
+      },
+      "exit": {
+        "type": "tp_sl",
+        "params": {
+          "take_profit_bps": 400,
+          "stop_loss_bps": 150
+        }
+      },
+      "filters": [
+        {
+          "type": "regime_filter",
+          "params": {
+            "allowed": ["trend_up", "trend_down"]
+          }
+        }
+      ],
+      "risk": {
+        "type": "fixed_fraction",
+        "params": {
+          "risk_bps": 100
+        }
+      },
+      "execution": {
+        "fee_bps": 10,
+        "slippage_bps": 5,
+        "allow_short": false
+      }
+    }
+  ]
+}
