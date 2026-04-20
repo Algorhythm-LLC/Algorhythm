@@ -2,10 +2,14 @@
 
 ## Статус
 
-**Принято.** Исходники модуля живут в репозитории `github.com/algorhythm/strategy-dsl`
-и дублируются в meta-repo под `modules/strategy-dsl/` до полного перехода на submodule +
-`go get`. Phase B (переключение `control-plane`) и Phase D (поправка ADR-001) —
-следующие шаги после тега `v0.1.0` на удалённом репозитории модуля.
+**Принято (ACCEPTED).** Канонические исходники — репозиторий `github.com/algorhythm/strategy-dsl`
+(теги по semver; `v0.1.0` — первый релиз Phase A). Meta-repo: `modules/strategy-dsl/`
+после публикации remote заменяется на **git submodule** (см. `modules/strategy-dsl/PUBLISH.md`),
+чтобы не было двух расходящихся копий.  
+**Phase D** (поправка ADR-001) — выполнена. **Phase B** (`control-plane` на внешний модуль) —
+в репозитории `services/control-plane`; до `go get` с прокси допускается временный
+`replace` в `go.mod` на локальный путь `../../modules/strategy-dsl` (удалить после
+первого успешного `go get github.com/algorhythm/strategy-dsl@v0.1.0`).
 
 ## Контекст
 
@@ -15,11 +19,11 @@ Strategy DSL — **контракт между двумя сервисами**:
 - `backtest-engine` перед запуском run парсит тот же JSON, ещё раз валидирует
   (defence-in-depth) и компилирует в internal execution plan.
 
-Сейчас единственный источник истины — `services/control-plane/schemas/strategy/v1/`
-и `.../v2/`: embed JSON Schema, Go validator, semantic validator, typed model.
-Это нормально, пока DSL живёт в одном сервисе. Но M4 требует ровно те же
-артефакты на стороне `backtest-engine`. Осталось ровно три варианта, как это
-решить:
+Канонический источник истины — модуль **`github.com/algorhythm/strategy-dsl`**
+(`modules/strategy-dsl/` в meta-repo): `v1/`, `v2/`, `dispatch/` — embed JSON Schema,
+Go validator, semantic validator, typed model. `control-plane` и `backtest-engine`
+подключают его как зависимость; копий схем внутри сервисов нет. Осталось ровно три
+варианта, как это могло бы решаться **до** extraction:
 
 | Подход | Проблема |
 |---|---|

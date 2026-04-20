@@ -55,8 +55,8 @@ type Result struct {
 	V1JSON json.RawMessage
 	// V2 is the typed document after schema + semantic hard gates.
 	V2 *dslv2.Document
-	// V2SemanticWarnings is populated only when Major==MajorV2.
-	// Nil means no warnings; non-nil empty slice is not used.
+	// V2SemanticWarnings is set only when Major==MajorV2.
+	// Nil means no warnings; non-nil means at least one warning (copy of semantic layer).
 	V2SemanticWarnings []dslv2.SemanticIssue
 }
 
@@ -90,7 +90,8 @@ func ensureValidators() error {
 //   - v1: JSON Schema only; on success V1JSON is set, V2 is nil.
 //   - v2: JSON Schema then semantic hard rules; on success V2 is set and
 //     unmarshalled from raw. If semantic produces only warnings, err is nil
-//     and V2SemanticWarnings is non-nil (may be empty slice if no warnings).
+//     and V2SemanticWarnings is non-nil with len > 0; if there are no warnings,
+//     V2SemanticWarnings is nil.
 //   - Semantic warnings never cause a non-nil error; they are only surfaced
 //     in Result.V2SemanticWarnings so callers cannot lose them.
 //   - Any semantic hard error returns a non-nil error wrapping SemanticHardError;
