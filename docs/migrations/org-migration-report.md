@@ -2,10 +2,10 @@
 
 ## 1. Goal
 
-Перенести все репозитории Algorhythm из личного GitHub в organization **`Algorhythm-LLC`**, зафиксировать канонические **нижний регистр**:
+Перенести все репозитории Algorhythm из личного GitHub в organization **`Algorhythm-LLC`**, зафиксировать **канонический нижний регистр** для документации и Go:
 
-- Git remote URLs: `https://github.com/algorhythm-llc/<repo>.git`
-- Go module / import paths: `github.com/algorhythm-llc/...`
+- **Канон (docs, `.gitmodules` образцы, Go paths):** `github.com/algorhythm-llc/...` и URL вида `https://github.com/algorhythm-llc/<repo>.git`
+- **Git remotes на практике:** GitHub нормализует host/path; meta-repo часто фигурирует как `https://github.com/Algorhythm-LLC/Algorhythm.git`, submodules — как `https://github.com/algorhythm-llc/...`. Это одно и то же репо; писать каноном по-прежнему **lowercase** `algorhythm-llc`.
 
 Убрать персональные remotes (`Froloveee3/...`) и прежний псевдо-namespace `github.com/algorhythm/...` из активной документации и кода. Не использовать `url.insteadOf` как постоянный режим.
 
@@ -81,7 +81,7 @@
 
 ### 4.4 Post-transfer canonical URLs
 
-После успешного transfer все `origin` / `.gitmodules` должны совпадать с колонкой «Target» в [§3](#3-target-state).
+После успешного transfer все `origin` / `.gitmodules` должны указывать на org-репозитории; **в документации и примеры команд** используйте lowercase (`algorhythm-llc`), даже если локальный `git remote -v` показывает `Algorhythm-LLC` — для GitHub это эквивалентно.
 
 ---
 
@@ -102,10 +102,9 @@
 | `services/market-data-ingestor/go.mod` + `**/*.go` | `github.com/algorhythm/market-data-ingestor` | `github.com/algorhythm-llc/algorhythm-market-data-ingestor` | **APPLIED** |
 | `services/control-plane/*.go` | imports old dsl | `github.com/algorhythm-llc/strategy-dsl/...` | **APPLIED** |
 
-После публикации в org: создать тег **`v0.1.1`** на коммите с новым `module` в `go.mod` и запушить `git push origin v0.1.1`.
+Тег **`v0.1.1`** на коммите с `module github.com/algorhythm-llc/strategy-dsl` **создан и запушен** на org-remote.
 
-**`go.sum` (control-plane):** строк для `github.com/algorhythm-llc/strategy-dsl` **нет**, пока модуль недоступен с GitHub или не выполнен `go get` / `go mod tidy` при доступном remote. После появления org-репозитория и тега `v0.1.1`:  
-`go get github.com/algorhythm-llc/strategy-dsl@v0.1.1 && go mod tidy` в каталоге `services/control-plane`.
+**`go.sum` (control-plane):** содержит checksums для `github.com/algorhythm-llc/strategy-dsl@v0.1.1` после `go get` / `go mod tidy` при доступном remote (состояние закоммичено).
 
 ---
 
@@ -201,29 +200,30 @@ git submodule update --init --recursive
 | `go test ./...` (backtest-engine, feature-builder, MDI) | **PASS** | |
 | `git submodule sync --recursive` | **PASS** | |
 
-**Примечание:** локальный `origin` meta-repo и submodule remotes обновлены на `https://github.com/Algorhythm-LLC/...`; ветка **dev** запушена на `Algorhythm-LLC/Algorhythm`.
+**Примечание:** `origin` meta-repo может отображаться как `https://github.com/Algorhythm-LLC/Algorhythm.git` (mixed case org), submodule — чаще `algorhythm-llc` в lowercase; канон для docs — [§1](#1-goal). Ветка **dev** запушена на org-meta.
 
 ---
 
-## 10. Remaining technical debt
+## 10. Follow-ups (не блокируют M4)
 
-1. Выполнить **transfer** всех репозиториев в `Algorhythm-LLC` и пуш meta/submodule remotes.
-2. Опубликовать **`v0.1.1`** для `strategy-dsl` с `module github.com/algorhythm-llc/strategy-dsl`.
-3. Запушить **обновлённые** submodule remotes (`strategy-dsl`, `control-plane`, `backtest-engine`, `feature-builder`, `market-data-ingestor` и др.) в их отдельные GitHub-репозитории после module-path изменений.
-4. Обновить **origin** meta-repo на `https://github.com/algorhythm-llc/Algorhythm.git`.
-5. CI: `GOPRIVATE`, SSH или `GITHUB_TOKEN` для приватных зависимостей.
+Миграция org и контрактного модуля **завершены** (см. [§11](#11-readiness-for-phase-c--m4)). Дальше — обычная эксплуатация:
+
+- **Новые клоны / CI:** один раз `GOPRIVATE=github.com/algorhythm-llc/*`, доступ к приватным модулям (SSH или `GITHUB_TOKEN` при `go` в CI).
+- **Свежий clone:** `git submodule sync --recursive` / `update --init --recursive` после смены URL у других разработчиков.
 
 ---
 
 ## 11. Readiness for Phase C / M4
 
-**READY** (org transfer + `strategy-dsl@v0.1.1` + зелёный `control-plane` без `replace` + зелёный `strategy-dsl` test suite).
+**READY** — фактически подтверждено на рабочей копии: transfer в org, **`strategy-dsl@v0.1.1`** на remote, **`control-plane`** без `replace`, **`go test` / `go vet`** по control-plane, полный **`strategy-dsl`** test suite (включая исправленный semantic-тест на дубликат entry).
 
-Дальнейшая работа по **M4** (compile step в backtest-engine) — следующий трек; в этом отчёте миграция и публикация контрактного модуля считаются завершёнными.
+**Следующие шаги по roadmap (вне этого отчёта):** **M4** — DSL compile step в backtest-engine → **M5** — feature compatibility → далее по engine. Миграция org и публикация контрактного модуля в отчёте считаются **закрытыми**.
 
 ---
 
 ## Appendix A: Migration target table (canonical URLs)
+
+Канон для таблицы и Go — **lowercase** `algorhythm-llc`. Эквивалент с сегментом `Algorhythm-LLC` в URL допустим GitHub-ом; в новых документах придерживайтесь lowercase.
 
 | Component | Canonical `git` URL |
 |-----------|----------------------|
@@ -244,14 +244,18 @@ git submodule update --init --recursive
 
 ## Appendix C: Validation checklist (copy-paste)
 
-- [ ] Все репозитории видны под `Algorhythm-LLC` с ожидаемыми именами  
-- [ ] `.gitmodules` только `github.com/algorhythm-llc/...`  
-- [ ] `git submodule sync` / `update` без ошибок  
-- [ ] `go env GOPRIVATE=github.com/algorhythm-llc/*`  
-- [ ] `strategy-dsl` тег `v0.1.1` на org  
-- [ ] `cd services/control-plane && go test ./... && go vet ./...`  
-- [ ] Нет активных инструкций `insteadOf`  
-- [ ] Документация не задаёт `github.com/algorhythm/...` как canonical path  
+Состояние на момент последней локальной проверки рабочей копии (организация, теги, Go):
+
+- [x] Все репозитории видны под org с ожидаемыми именами (`Algorhythm-LLC` на GitHub)  
+- [x] `.gitmodules` только org-URL; канон записи — `github.com/algorhythm-llc/...`  
+- [x] `git submodule sync --recursive` / `submodule update --init --recursive` без ошибок  
+- [x] `go env GOPRIVATE=github.com/algorhythm-llc/*` (или эквивалент для сборки)  
+- [x] `strategy-dsl` тег `v0.1.1` на org-remote  
+- [x] `control-plane`: `go test ./...` и `go vet ./...` *(PowerShell 5.1: разделитель `;`, не `&&`)*  
+- [x] Нет активных инструкций `insteadOf` в «как жить дальше»  
+- [x] Активная документация не задаёт `github.com/algorhythm/...` как canonical path для модулей  
+
+На **новой** машине повторить пункты с submodule sync и `GOPRIVATE` один раз после clone.
 
 ## Appendix D: Post-transfer — короткий командный чеклист
 
@@ -286,4 +290,4 @@ go vet ./...
 # затем закоммитить изменения go.sum/go.mod в репозитории control-plane и bump pointer в meta
 ```
 
-**Отдельно (не в этих 10 строк):** запушить остальные сервисные submodules с обновлёнными `go.mod`, если ещё не на org. **Отдельно:** починить `dispatch.TestParse_V2SemanticHard_DuplicateEntryIDs` в `strategy-dsl` до уверенного старта M4.
+**Отдельно (не в этих 10 строк):** запушить остальные сервисные submodules с обновлёнными `go.mod`, если ещё не на org. **`dispatch.TestParse_V2SemanticHard_DuplicateEntryIDs`** в `strategy-dsl` исправлен (дублирование entry через `json` struct, без хрупкого `Replace` по embed) — готово к старту M4 по контракту.
