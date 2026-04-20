@@ -274,7 +274,7 @@ flowchart LR
 **Foundations (после freeze v2):**
 
 1. **CP client.** GET `strategy-versions/{id}`, GET `experiment-runs/{id}`, GET dataset + partitions, PATCH `running`. Заменить захардкоженный `"mvp"` summary. **Terminal PATCH (`completed`/`failed` с `result`) НЕ делает engine** — см. п. «Владелец terminal state» в ADR-004 v2; engine публикует только NATS-событие.
-2. **S3/MinIO adapter + Parquet reader.** Зависимости: `minio-go`, `parquet-go`. Добавить `internal/adapters/s3/`, `internal/adapters/parquet/feature_reader.go`. Читать по `dataset_id` от CP.
+2. **S3/MinIO adapter + Parquet reader.** Зависимости: `minio-go`, `parquet-go`. Добавить `internal/storage/` (MinIO adapter — DONE, M2), `internal/parquet/feature_reader.go` (M3, reads selected columns + dedupes cross-month). Читать по `dataset_id` от CP. Канонический межсервисный контракт формата — [feature-parquet-v1.md](../contracts/feature-parquet-v1.md) (ACCEPTED).
 3. **DSL парсер и AST.** `internal/domain/strategy.go` + `internal/app/dsl/parse.go`. Разбор по major-версии `schema_version`: v1 → legacy структура, v2 → AST (conditionNode, entries[], exits[] с discriminated union по `kind`).
 4. **Feature compatibility validator.** Перед bar loop: резолвит `feature_requirements.required_features` (v2) или используемые индикаторы (v1) в индексы колонок parquet; при несовпадении — `bt.run.failed` с `reason: feature_missing`.
 
