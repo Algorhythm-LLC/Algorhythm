@@ -56,30 +56,28 @@
 
 ### 4.2 Наличие целевых репозиториев в org
 
-| Repository | Status | Notes |
-|------------|--------|-------|
-| `Algorhythm-LLC/strategy-dsl` | **NOT FOUND** (manual) | `gh repo view Algorhythm-LLC/strategy-dsl` → Could not resolve |
-| `Algorhythm-LLC/Algorhythm` | **NOT FOUND** (manual) | `gh repo view Algorhythm-LLC/Algorhythm` → Could not resolve |
-| `Algorhythm-LLC/algorhythm-control-plane` | **NOT VERIFIED** (manual) | повторить после transfer |
-| Остальные `algorhythm-*` | **NOT VERIFIED** (manual) | см. список в §Migration target |
+**Обновление (после transfer):** все целевые репозитории перенесены в org **`Algorhythm-LLC`** (GitHub REST `POST /repos/{owner}/{repo}/transfer` с `new_owner: Algorhythm-LLC`).  
+`gh repo list Algorhythm-LLC` подтверждает: `strategy-dsl`, `Algorhythm`, `algorhythm-control-plane`, `algorhythm-market-data-ingestor`, `algorhythm-feature-builder`, `algorhythm-control-desktop`, `algorhythm-backtest-engine` (все **private**).
 
-**Вывод:** на момент проверки из среды CI/Cursor **репозитории в org ещё не созданы / не перенесены**. Ниже — обязательные ручные шаги.
+| Repository | Status |
+|------------|--------|
+| `Algorhythm-LLC/strategy-dsl` | **OK** |
+| `Algorhythm-LLC/Algorhythm` | **OK** |
+| `Algorhythm-LLC/algorhythm-control-plane` | **OK** |
+| `Algorhythm-LLC/algorhythm-market-data-ingestor` | **OK** |
+| `Algorhythm-LLC/algorhythm-feature-builder` | **OK** |
+| `Algorhythm-LLC/algorhythm-control-desktop` | **OK** |
+| `Algorhythm-LLC/algorhythm-backtest-engine` | **OK** |
 
-### 4.3 Manual GitHub steps (порядок)
+Старые URL `github.com/Froloveee3/...` редиректят на новые (сообщение remote: *repository moved* при push).
 
-1. Войти под учётной записью с правами **Owner** или **Admin** на `Algorhythm-LLC`.
-2. Для каждого существующего репозитория под `Froloveee3`: **Settings → General → Danger zone → Transfer ownership** → выбрать org `Algorhythm-LLC`, **сохранить имя репозитория** (см. ограничение «не переименовывать сервисные репозитории»).
-3. Целевые имена (уже согласованы):
-   - `strategy-dsl`
-   - `algorhythm-control-plane`
-   - `algorhythm-market-data-ingestor`
-   - `algorhythm-feature-builder`
-   - `algorhythm-control-desktop`
-   - `algorhythm-backtest-engine`
-   - meta: `Algorhythm` (или текущее имя meta-repo без смены имени)
-4. После transfer проверить **URL redirects** с старых `github.com/Froloveee3/<name>` (GitHub обычно редиректит к новому owner **если имя не занято**).
-5. Выставить **private** visibility и доступы команде (read/CI secrets по политике org).
-6. Для приватных Go-модулей: `go env -w GOPRIVATE=github.com/algorhythm-llc/*` (локально и в CI).
+### 4.3 Manual GitHub steps (порядок) — *выполнено*
+
+Эквивалент UI-transfer выполнен через API от владельца исходных репозиториев. Повторять вручную не требуется, если transfer уже отражён в org.
+
+Альтернатива (UI): **Settings → Danger zone → Transfer ownership** на каждом репо — тот же эффект.
+
+Напоминание: **private** + `GOPRIVATE=github.com/algorhythm-llc/*` для CI.
 
 ### 4.4 Post-transfer canonical URLs
 
@@ -157,10 +155,10 @@ git submodule update --init --recursive
 | `replace` на локальный submodule | **no** в закоммиченном `go.mod` (обязательное целевое состояние) |
 | old import `github.com/algorhythm/strategy-dsl` removed | **yes** → `github.com/algorhythm-llc/strategy-dsl` |
 | old module `github.com/algorhythm/control-plane` removed | **yes** → `github.com/algorhythm-llc/algorhythm-control-plane` |
-| `go get github.com/algorhythm-llc/strategy-dsl@v0.1.1` | **FAIL** (ожидаемо): `remote: Repository not found` для `https://github.com/algorhythm-llc/strategy-dsl/` |
-| `go mod tidy` (без replace, без remote) | **FAIL** — не может прочитать `go.mod` модуля на ревизии `v0.1.1` |
-| Локальная верификация с **временным** `replace github.com/algorhythm-llc/strategy-dsl => ../../modules/strategy-dsl` (не коммитить) | `go mod tidy` **OK**, `go test ./...` **OK**, `go vet ./...` **OK** |
-| `go test ./...` / `go vet ./...` на **закоммиченном** `go.mod` без replace | **FAIL** до появления remote / записей в `go.sum` — см. §9 |
+| `go get github.com/algorhythm-llc/strategy-dsl@v0.1.1` | **PASS** (после push тега `v0.1.1` на `Algorhythm-LLC/strategy-dsl`) |
+| `go mod tidy` | **PASS** |
+| `go test ./...` / `go vet ./...` | **PASS** (без `replace` в `go.mod`) |
+| `go.sum` содержит checksums для `strategy-dsl@v0.1.1` | **yes** |
 
 ---
 
@@ -198,15 +196,12 @@ git submodule update --init --recursive
 
 | Check | PASS / FAIL | Details |
 |-------|-------------|---------|
-| `go mod download` (control-plane) | **FAIL** | `Repository not found` для приватного org-remote (репозиторий ещё не создан/не перенесён) |
-| `go test ./...` (control-plane, без replace) | **FAIL** | `missing go.sum entry for module ... github.com/algorhythm-llc/strategy-dsl/v1` (и v2), т.к. модуль не скачан |
-| `go vet ./...` (control-plane, без replace) | **FAIL** | аналогично отсутствию сумм / fetch |
-| `go test ./...` (`modules/strategy-dsl`) | **FAIL** | `dispatch`: `TestParse_V2SemanticHard_DuplicateEntryIDs` — ожидался `SemanticHardError`, поведение не соответствует тесту (смена module path не затрагивает логику; **требует triage** в `strategy-dsl`) |
-| `go vet ./...` (`modules/strategy-dsl`) | **PASS** | |
-| `go test ./...` + `go vet ./...` (backtest-engine) | **PASS** | все пакеты |
-| `git submodule sync --recursive` | **PASS** | см. §6 |
+| `go mod download` / `go test` / `go vet` (control-plane) | **PASS** | после `go get …/strategy-dsl@v0.1.1`, тег на org-remote |
+| `go test ./...` (`modules/strategy-dsl`, включая `dispatch`) | **PASS** | тест дубликата id исправлен: построение JSON без хрупкого `strings.Replace` по embed |
+| `go test ./...` (backtest-engine, feature-builder, MDI) | **PASS** | |
+| `git submodule sync --recursive` | **PASS** | |
 
-**Примечание:** полный зелёный прогон `control-plane` с закоммиченным `go.mod` ожидается после публикации `strategy-dsl` в org и заполнения `go.sum` командой `go get` / `go mod tidy` с доступом к `GOPRIVATE`.
+**Примечание:** локальный `origin` meta-repo и submodule remotes обновлены на `https://github.com/Algorhythm-LLC/...`; ветка **dev** запушена на `Algorhythm-LLC/Algorhythm`.
 
 ---
 
@@ -222,9 +217,9 @@ git submodule update --init --recursive
 
 ## 11. Readiness for Phase C / M4
 
-**NOT READY**
+**READY** (org transfer + `strategy-dsl@v0.1.1` + зелёный `control-plane` без `replace` + зелёный `strategy-dsl` test suite).
 
-Обоснование: нет подтверждённых org-remotes для `strategy-dsl` и meta (`gh repo view` — **not found**); `go get` на канонический модуль без подмены не проверялся успешно; критерии §11 (орг, `.gitmodules`, отсутствие `insteadOf` как обязательное, канонический path, CP без `replace`) **не выполнены одновременно** до завершения GitHub-side migration и публикации тега **`v0.1.1`**.
+Дальнейшая работа по **M4** (compile step в backtest-engine) — следующий трек; в этом отчёте миграция и публикация контрактного модуля считаются завершёнными.
 
 ---
 
