@@ -9,7 +9,7 @@ Algorhythm/
 ├── docs/           # Архитектура, ADR, API
 ├── ops/full-stack/ # Инфраструктура (MinIO, PostgreSQL, ClickHouse, NATS, Qdrant)
 ├── scripts/        # Запуск стенда
-├── services/       # Сервисы (submodules)
+├── services/       # Сервисы (git submodules; канонические remotes — org **Algorhythm-LLC**, см. `.gitmodules` и `docs/migrations/org-migration-report.md`)
 │   ├── control-plane/
 │   ├── market-data-ingestor/
 │   ├── control-desktop/   # десктопный GUI (Wails), submodule

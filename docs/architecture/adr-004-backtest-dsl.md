@@ -2,8 +2,8 @@
 
 ## Статус
 
-- **v1:** Принято. Frozen MVP. Валидируется `control-plane` через модуль `github.com/algorhythm/strategy-dsl/v1`.
-- **v2:** **ACCEPTED (schema contract).** **Runtime support: pending.** Схема и semantic checklist зафиксированы в `github.com/algorhythm/strategy-dsl/v2`, `control-plane` диспатчит валидацию по `schema_version` (`^1\.` → `dslv1`, `^2\.` → `dslv2`). Engine-runtime (`backtest-engine`) для v2 ещё не написан: принятая схема — это **контракт под реализацию**, а не «уже исполняется». Любые правки после этого статуса идут только как backward-compatible minor-bumps (`2.1.x`, `2.2.x`); breaking-изменения — только `v3`.
+- **v1:** Принято. Frozen MVP. Валидируется `control-plane` через модуль `github.com/algorhythm-llc/strategy-dsl/v1`.
+- **v2:** **ACCEPTED (schema contract).** **Runtime support: pending.** Схема и semantic checklist зафиксированы в `github.com/algorhythm-llc/strategy-dsl/v2`, `control-plane` диспатчит валидацию по `schema_version` (`^1\.` → `dslv1`, `^2\.` → `dslv2`). Engine-runtime (`backtest-engine`) для v2 ещё не написан: принятая схема — это **контракт под реализацию**, а не «уже исполняется». Любые правки после этого статуса идут только как backward-compatible minor-bumps (`2.1.x`, `2.2.x`); breaking-изменения — только `v3`.
 
 ## Контекст
 
@@ -26,7 +26,7 @@ v2 спроектирована так, чтобы композиция усло
 
 - Верхний уровень: `schema_version`, `strategy_code`, `instrument_scope { exchange, symbols[] }`, `entry`, `exit`, `filters[]`, `risk`, `execution { fee_bps, slippage_bps, allow_short }`.
 - Все функциональные блоки — `{ type, params }` с закрытыми enum'ами на `type`.
-- Активный валидатор: `github.com/algorhythm/strategy-dsl/v1` (`validator.go`), embed JSON Schema, cross-field проверка `strategy_code == strategy_template_code`.
+- Активный валидатор: `github.com/algorhythm-llc/strategy-dsl/v1` (`validator.go`), embed JSON Schema, cross-field проверка `strategy_code == strategy_template_code`.
 - Движок (в рамках v1) остаётся простым: один `entry`, один `exit`, опциональные filters, flat fees/slippage.
 
 v1 сохраняется в проекте навсегда — как дешёвый MVP-режим и как совместимый путь для уже сохранённых стратегий.
@@ -208,6 +208,6 @@ Engine не владеет бизнес-жизненным циклом run. Э�
 ## Ссылки
 
 - [Technical Charter](./technical-charter.md), §8
-- `modules/strategy-dsl/v1/` — активная схема и её валидатор (модуль `github.com/algorhythm/strategy-dsl`).
+- `modules/strategy-dsl/v1/` — активная схема и её валидатор (модуль `github.com/algorhythm-llc/strategy-dsl`).
 - `modules/strategy-dsl/v2/` — v2 схема и README с полным переходом v1 → v2.
 - `docs/stages/stage-3-backtest-and-desktop.md` — стейдж-спека, куда v2 подключается как отдельный пункт DoD.

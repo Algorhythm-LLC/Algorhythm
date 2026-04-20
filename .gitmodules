@@ -1,19 +1,19 @@
 [submodule "services/control-plane"]
 	path = services/control-plane
-	url = https://github.com/Froloveee3/algorhythm-control-plane.git
+	url = https://github.com/algorhythm-llc/algorhythm-control-plane.git
 [submodule "services/market-data-ingestor"]
 	path = services/market-data-ingestor
-	url = https://github.com/Froloveee3/algorhythm-market-data-ingestor.git
+	url = https://github.com/algorhythm-llc/algorhythm-market-data-ingestor.git
 [submodule "services/feature-builder"]
 	path = services/feature-builder
-	url = https://github.com/Froloveee3/algorhythm-feature-builder.git
+	url = https://github.com/algorhythm-llc/algorhythm-feature-builder.git
 
 [submodule "services/control-desktop"]
 	path = services/control-desktop
-	url = https://github.com/Froloveee3/algorhythm-control-desktop.git
+	url = https://github.com/algorhythm-llc/algorhythm-control-desktop.git
 [submodule "services/backtest-engine"]
 	path = services/backtest-engine
-	url = https://github.com/Froloveee3/algorhythm-backtest-engine.git
+	url = https://github.com/algorhythm-llc/algorhythm-backtest-engine.git
 [submodule "modules/strategy-dsl"]
 	path = modules/strategy-dsl
-	url = https://github.com/Froloveee3/strategy-dsl.git
+	url = https://github.com/algorhythm-llc/strategy-dsl.git

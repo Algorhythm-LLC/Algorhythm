@@ -101,7 +101,7 @@ sequenceDiagram
 
 ## DSL (ADR-004)
 
-Канонический источник схемы — [modules/strategy-dsl/v1/strategy.schema.json](../../modules/strategy-dsl/v1/strategy.schema.json) (`github.com/algorhythm/strategy-dsl/v1`). Пример валидного документа (соответствует §8.1 устава):
+Канонический источник схемы — [modules/strategy-dsl/v1/strategy.schema.json](../../modules/strategy-dsl/v1/strategy.schema.json) (`github.com/algorhythm-llc/strategy-dsl/v1`). Пример валидного документа (соответствует §8.1 устава):
 
 ```json
 {
@@ -128,7 +128,7 @@ sequenceDiagram
 Текущий статус:
 
 - Таблицы и HTTP-эндпоинты **есть** (см. секцию «Реализация»).
-- **JSON Schema DSL v1 — ACTIVE.** Схема в [modules/strategy-dsl/v1/strategy.schema.json](../../modules/strategy-dsl/v1/strategy.schema.json), валидатор — пакет `github.com/algorhythm/strategy-dsl/v1`, подключен в `cmd/api/main.go` и вызывается в `POST /strategy-versions` до записи в БД. Невалидный DSL → `422 Unprocessable Entity` с структурированным `{error, issues[]}`.
+- **JSON Schema DSL v1 — ACTIVE.** Схема в [modules/strategy-dsl/v1/strategy.schema.json](../../modules/strategy-dsl/v1/strategy.schema.json), валидатор — пакет `github.com/algorhythm-llc/strategy-dsl/v1`, подключен в `cmd/api/main.go` и вызывается в `POST /strategy-versions` до записи в БД. Невалидный DSL → `422 Unprocessable Entity` с структурированным `{error, issues[]}`.
 - **JSON Schema DSL v2 — ACCEPTED (schema contract).** Схема и semantic — [modules/strategy-dsl/v2/](../../modules/strategy-dsl/v2/README.md); `control-plane` диспатчит по `schema_version` (`^1.` / `^2.`). Runtime в backtest-engine — см. ADR-004 ([ADR-004](../architecture/adr-004-backtest-dsl.md)).
 
 ---
@@ -257,9 +257,9 @@ flowchart LR
 
 1. **Schema vs code alignment — DONE.** Миграция [000006_strategy_experiment_align.up.sql](../../services/control-plane/migrations/000006_strategy_experiment_align.up.sql) подключена в [embed.go](../../services/control-plane/migrations/embed.go). Полный `reset-cold-start` + `migrate up` от 000001 до 000006 на чистой БД прогонялся; `POST /strategy-templates`, `POST /strategy-versions`, `POST /experiment-batches` работают без ручных шагов.
 
-2. **JSON Schema DSL v1 — DONE.** Валидатор в модуле `github.com/algorhythm/strategy-dsl/v1` ([исходники](../../modules/strategy-dsl/v1/validator.go)), библиотека `github.com/santhosh-tekuri/jsonschema/v6`, wired в [cmd/api/main.go](../../services/control-plane/cmd/api/main.go) и [internal/adapters/http/handlers.go](../../services/control-plane/internal/adapters/http/handlers.go). Невалидный payload → `422 {error, issues[]}`. Cross-field: `dsl_json.strategy_code == strategy_template_code`.
+2. **JSON Schema DSL v1 — DONE.** Валидатор в модуле `github.com/algorhythm-llc/strategy-dsl/v1` ([исходники](../../modules/strategy-dsl/v1/validator.go)), библиотека `github.com/santhosh-tekuri/jsonschema/v6`, wired в [cmd/api/main.go](../../services/control-plane/cmd/api/main.go) и [internal/adapters/http/handlers.go](../../services/control-plane/internal/adapters/http/handlers.go). Невалидный payload → `422 {error, issues[]}`. Cross-field: `dsl_json.strategy_code == strategy_template_code`.
 
-3. **JSON Schema DSL v2 — ACCEPTED + wired в CP.** [strategy.schema.json](../../modules/strategy-dsl/v2/strategy.schema.json) + [README](../../modules/strategy-dsl/v2/README.md); пакет `github.com/algorhythm/strategy-dsl/v2`, dispatch по `schema_version` в handlers. Runtime в engine — отдельный этап ([ADR-004](../architecture/adr-004-backtest-dsl.md)).
+3. **JSON Schema DSL v2 — ACCEPTED + wired в CP.** [strategy.schema.json](../../modules/strategy-dsl/v2/strategy.schema.json) + [README](../../modules/strategy-dsl/v2/README.md); пакет `github.com/algorhythm-llc/strategy-dsl/v2`, dispatch по `schema_version` в handlers. Runtime в engine — отдельный этап ([ADR-004](../architecture/adr-004-backtest-dsl.md)).
 
 4. **`cp.experiment.created` — OUT OF SCOPE.** Оставлен как `PLANNED` в [event-catalog.md](../api/event-catalog.md), в коде не публикуется и не потребляется. Возвращаемся к этому вопросу только когда появится сценарий, требующий pre-materialize run slots / prefetch datasets / warm caches / batch planning.
 

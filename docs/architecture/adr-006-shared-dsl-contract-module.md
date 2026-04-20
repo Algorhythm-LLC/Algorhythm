@@ -4,14 +4,14 @@
 
 **Status: ACCEPTED** (принято в инженерном смысле: контракт и модуль утверждены; публикация remote и тега — операционный шаг, см. ниже).
 
-**Принято (ACCEPTED).** Канонические исходники — репозиторий `github.com/algorhythm/strategy-dsl`
+**Принято (ACCEPTED).** Канонические исходники — репозиторий `github.com/algorhythm-llc/strategy-dsl`
 (теги по semver; `v0.1.0` — первый релиз Phase A). Meta-repo: `modules/strategy-dsl/`
 после публикации remote заменяется на **git submodule** (см. `modules/strategy-dsl/PUBLISH.md`),
 чтобы не было двух расходящихся копий.  
 **Phase D** (поправка ADR-001) — выполнена. **Phase B** (`control-plane` на внешний модуль) —
-в репозитории `services/control-plane`; до `go get` с прокси допускается временный
-`replace` в `go.mod` на локальный путь `../../modules/strategy-dsl` (удалить после
-первого успешного `go get github.com/algorhythm/strategy-dsl@v0.1.0`).
+в репозитории `services/control-plane`. Канонический модуль — `github.com/algorhythm-llc/strategy-dsl`
+(см. `docs/migrations/org-migration-report.md`). На этапах bootstrap до публикации org-remote допускался
+временный `replace` в `go.mod`; в целевом состоянии только `go get` на тег из **Algorhythm-LLC**, без `replace`.
 
 ## Контекст
 
@@ -21,7 +21,7 @@ Strategy DSL — **контракт между двумя сервисами**:
 - `backtest-engine` перед запуском run парсит тот же JSON, ещё раз валидирует
   (defence-in-depth) и компилирует в internal execution plan.
 
-Канонический источник истины — модуль **`github.com/algorhythm/strategy-dsl`**
+Канонический источник истины — модуль **`github.com/algorhythm-llc/strategy-dsl`**
 (`modules/strategy-dsl/` в meta-repo): `v1/`, `v2/`, `dispatch/` — embed JSON Schema,
 Go validator, semantic validator, typed model. `control-plane` и `backtest-engine`
 подключают его как зависимость; копий схем внутри сервисов нет. Осталось ровно три
@@ -55,7 +55,7 @@ submodule, содержащий **только** контрактные арте
 - Version dispatch helper (`schema_version` → v1/v2).
 
 Имя модуля (git-репозиторий и Go import path):
-`github.com/algorhythm/strategy-dsl`
+`github.com/algorhythm-llc/strategy-dsl`
 
 Submodule в meta-repo: `modules/strategy-dsl/` (не `services/` — это не сервис).
 
@@ -89,7 +89,7 @@ Submodule в meta-repo: `modules/strategy-dsl/` (не `services/` — это н�
 
 ```
 strategy-dsl/
-├── go.mod                 # module github.com/algorhythm/strategy-dsl; go 1.24.0
+├── go.mod                 # module github.com/algorhythm-llc/strategy-dsl; go 1.24.0
 ├── go.sum
 ├── README.md              # scope, non-goals, versioning, changelog
 ├── LICENSE
@@ -184,7 +184,7 @@ func Parse(raw []byte) (*Result, error)
 
 ### Phase A — создать модуль
 
-1. Создать новый git-репозиторий `algorhythm/strategy-dsl`.
+1. Создать новый git-репозиторий `algorhythm-llc/strategy-dsl`.
 2. Скопировать `v1/` и `v2/` из `services/control-plane/schemas/strategy/`
    **вербатим**, плюс `go.mod` с корректным module path (`go 1.24.0`, как у
    `control-plane`, без отдельного bump только ради модуля).
@@ -198,7 +198,7 @@ func Parse(raw []byte) (*Result, error)
 
 1. Добавить submodule `modules/strategy-dsl/` в meta-repo.
 2. В `services/control-plane/go.mod` добавить зависимость на
-   `github.com/algorhythm/strategy-dsl v0.1.0`.
+   `github.com/algorhythm-llc/strategy-dsl v0.1.1`.
 3. В `internal/adapters/http/handlers.go`:
    - заменить импорты `dslv1` / `dslv2` на пакеты внешнего модуля;
    - сохранить текущий dispatch; его логика не меняется.
@@ -260,7 +260,7 @@ ADR-006 как легитимного исключения.
 
 До extraction:
 1. ADR-006 принят.
-2. Репозиторий `algorhythm/strategy-dsl` создан (можно приватный на время
+2. Репозиторий `algorhythm-llc/strategy-dsl` создан (можно приватный на время
    bootstrap).
 
 После Phase A:
