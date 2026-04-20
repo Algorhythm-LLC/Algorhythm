@@ -2,6 +2,8 @@
 
 ## Статус
 
+**Status: ACCEPTED** (принято в инженерном смысле: контракт и модуль утверждены; публикация remote и тега — операционный шаг, см. ниже).
+
 **Принято (ACCEPTED).** Канонические исходники — репозиторий `github.com/algorhythm/strategy-dsl`
 (теги по semver; `v0.1.0` — первый релиз Phase A). Meta-repo: `modules/strategy-dsl/`
 после публикации remote заменяется на **git submodule** (см. `modules/strategy-dsl/PUBLISH.md`),
