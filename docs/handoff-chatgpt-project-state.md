@@ -184,6 +184,7 @@ Truthful runtime preflight требует резолва **feature set** (code +
 
 ## 11. Ссылки на планы (детализация)
 
+- **Упорядоченный execution backlog (пошаговый план после handoff):** `docs/stages/stage-6-1-prioritized-backlog.md`  
 - Следующая итерация Stage 6.1: `docs/stages/stage-6-1-next-iteration.md`  
 - Master backlog: `docs/stages/stage-6-1-master-backlog.md`  
 - Subset expansion: `docs/stages/stage-6-runtime-subset-expansion.md`  
