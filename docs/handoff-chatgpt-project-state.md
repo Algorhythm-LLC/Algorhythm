@@ -61,7 +61,7 @@
 
 - **control-plane:** drafts, compile `draft → canonical DSL`, оркестрация schema + semantic + **вызов engine preflight**, publish `strategy_version`.
 - **backtest-engine:** `dslcompile.Compile`, **RunV1** bar-loop, запись результатов; **runtime preflight** на worker HTTP.
-- **control-desktop:** экран стратегий (монолит), настройка URL results-api.
+- **control-desktop:** экран стратегий в `frontend/src/screens/strategies/*`, Wails API (`app_strategies`, `app_results`), настройка URL results-api.
 - **results-api:** HTTP read-side (submodule `services/results-api`, отдельный репозиторий **Algorhythm-LLC/results-api**).
 
 Документы: `docs/stages/stage-6-strategy-authoring.md`, `docs/stage-6-authoring-implementation-report.md`, `docs/stage-6-chatgpt-context.md`.
@@ -100,7 +100,7 @@ Truthful runtime preflight требует резолва **feature set** (code +
 - **Тесты:** `compile_test.go` (CP), `dslcompile/compile_test.go`, `runtime/engine_test.go`, `cmd/worker/preflight_http_test.go` (engine), `dispatch/dispatch_test.go` (strategy-dsl)  
 - **Matrix:** строки `signal_only` и примечания к `tp_sl`/trailing/time при `signal_only` — `docs/stages/stage-6-runtime-support-matrix.md`
 
-**Следующий крупный semantic slice по плану продукта:** **PR-09 — `continuous` / `flip`** (отдельно от PR-08; тянет state machine, same-bar ordering, fees на reversal и т.д.).
+**Следующий крупный semantic slice по плану продукта:** **PR-09 — `continuous` / `flip`** — черновик gate и acceptance: [stage-6-1-pr-09-continuous-flip.md](stages/stage-6-1-pr-09-continuous-flip.md) (семантику утвердить до изменения schema).
 
 ---
 
@@ -138,7 +138,7 @@ Truthful runtime preflight требует резолва **feature set** (code +
 
 ### control-desktop
 
-- `frontend/src/screens/strategies.ts` (**монолит** — техдолг)
+- `frontend/src/screens/strategies/` (модульный экран), `frontend/src/screens/strategies.ts` (реэкспорт)
 - `frontend/src/router.ts`, `navigation/catalog.ts`, `api/wails.ts`
 - `app_strategies.go`, `app_results.go`, `config.go`
 

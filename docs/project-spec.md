@@ -111,7 +111,7 @@ flowchart TD
   bt --> minio
   bt --> ch
   bt <--> nats
-  bt -- HTTP PATCH --> cp
+  bt -. PATCH run=running only .-> cp
 
   results --> ch
   llm --> results
@@ -163,8 +163,8 @@ sequenceDiagram
   D->>CP: POST /experiment-runs/request
   CP->>N: publish bt.run.requested
   N->>B: deliver
-  B->>CP: PATCH run status=running
-  B->>CH: insert summary
+  B->>CP: PATCH run status=running (only)
+  B->>CH: summaries + trades/equity/metrics (path-dependent)
   B->>N: publish bt.run.completed
   N->>CP: deliver, finalize run
 ```
@@ -175,12 +175,13 @@ sequenceDiagram
 
 | Сервис | Submodule path | Роль | Стек | Связанные ADR | Состояние |
 |---|---|---|---|---|---|
-| [control-plane](../services/control-plane/) | `services/control-plane` | Реестры, джобы, outbox, orchestration | Go + PostgreSQL | [001](architecture/adr-001-meta-repo-and-submodules.md), [002](architecture/adr-002-data-storage-model.md), [003](architecture/adr-003-service-boundaries.md) | **Production-ready** для этапов 1–2, частично для этапа 3 (strategy/experiment domain есть, есть mismatch миграций — см. stage-3) |
+| [control-plane](../services/control-plane/) | `services/control-plane` | Реестры, джобы, outbox, orchestration, authoring, DSL-валидация v1/v2 | Go + PostgreSQL | [001](architecture/adr-001-meta-repo-and-submodules.md), [002](architecture/adr-002-data-storage-model.md), [003](architecture/adr-003-service-boundaries.md) | **Production-ready** для этапов 1–2; **этап 3+** — стратегии/эксперименты/runs, terminal state по NATS |
 | [market-data-ingestor](../services/market-data-ingestor/) | `services/market-data-ingestor` | Binance USDⓈ-M → Parquet в MinIO, snapshot-слой, валидация | Go + Binance REST | [002](architecture/adr-002-data-storage-model.md), [005](architecture/adr-005-futures-raw-data-model.md) | **Production-ready** |
 | [feature-builder](../services/feature-builder/) | `services/feature-builder` | Feature parquet из raw | Go | [002](architecture/adr-002-data-storage-model.md), [003](architecture/adr-003-service-boundaries.md), [health-http](architecture/adr-health-http-workers.md) | **MVP ready** (1 feature set, 1m only) |
-| [backtest-engine](../services/backtest-engine/) | `services/backtest-engine` | Интерпретатор DSL + запись результатов в CH | Go + ClickHouse | [002](architecture/adr-002-data-storage-model.md), [003](architecture/adr-003-service-boundaries.md), [004](architecture/adr-004-backtest-dsl.md), [health-http](architecture/adr-health-http-workers.md) | **Тонкий orchestration stub**; реальный DSL-runtime — TODO |
-| [control-desktop](../services/control-desktop/) | `services/control-desktop` | Десктопный GUI-оркестратор | Wails v2 + Go + TypeScript | [003](architecture/adr-003-service-boundaries.md) | **Рабочее приложение** (Go + dist); исходники фронта в репо временно редуцированы (см. stage-3) |
-| [results-api](../services/results-api/) | `services/results-api` | Read-only HTTP поверх CH | Go | [003](architecture/adr-003-service-boundaries.md) | **MVP + submodule** (отдельный репозиторий `Algorhythm-LLC/results-api`; полнота Stage 4 — впереди) |
+| [backtest-engine](../services/backtest-engine/) | `services/backtest-engine` | `dslcompile`, `runresolve`, `featurecompat`, optional MinIO frame, **RunV1**, CH writer, preflight HTTP | Go + ClickHouse | [002](architecture/adr-002-data-storage-model.md), [003](architecture/adr-003-service-boundaries.md), [004](architecture/adr-004-backtest-dsl.md), [health-http](architecture/adr-health-http-workers.md) | **v1 runtime + placeholder** для не-v1 до DSL v2 executor |
+| [control-desktop](../services/control-desktop/) | `services/control-desktop` | Десктопный GUI-оркестратор | Wails v2 + Go + TypeScript | [003](architecture/adr-003-service-boundaries.md) | **Рабочее приложение**; исходники SPA в `frontend/src` (в т.ч. модульный экран `screens/strategies/`) |
+| [results-api](../services/results-api/) | `services/results-api` | Read-only HTTP поверх CH | Go | [003](architecture/adr-003-service-boundaries.md) | **MVP + submodule** (`Algorhythm-LLC/results-api`; агрегаты/auth — Stage 4) |
+| [strategy-dsl](../../modules/strategy-dsl/) | `modules/strategy-dsl` | JSON Schema v1/v2, dispatch | Go module | [004](architecture/adr-004-backtest-dsl.md) | **v0.1.3** (PR-07/PR-08 в схеме и теге) |
 | llm-analyst | `services/llm-analyst` (создать) | Embeddings + Qdrant + retrieval | Python 3.12 | [003](architecture/adr-003-service-boundaries.md) | **TODO** (этап 5) |
 
 Инфраструктура: `ops/full-stack/` — `docker-compose.yml` поднимает MinIO, PostgreSQL 16, ClickHouse 24, NATS 2.10 (JetStream), Qdrant. Остаётся в корне мета-репо.
@@ -194,7 +195,7 @@ sequenceDiagram
 | 1 | Foundation | **DONE** | [stage-1-foundation.md](stages/stage-1-foundation.md) |
 | 2 | Data layer — raw + features + orchestration + snapshots | **DONE** | [stage-2-data-layer.md](stages/stage-2-data-layer.md) |
 | 3 | Backtest engine + Control Desktop | **IN PROGRESS** | [stage-3-backtest-and-desktop.md](stages/stage-3-backtest-and-desktop.md) |
-| 4 | Results API и витрина | **TODO** | [stage-4-results-api.md](stages/stage-4-results-api.md) |
+| 4 | Results API и витрина | **IN PROGRESS** (MVP read API в submodule) | [stage-4-results-api.md](stages/stage-4-results-api.md) |
 | 5 | LLM Analyst | **TODO** | [stage-5-llm-analyst.md](stages/stage-5-llm-analyst.md) |
 | 6 | Strategy Authoring | **IN PROGRESS** | [stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md) |
 
@@ -203,7 +204,7 @@ flowchart LR
   s1[Stage 1<br/>Foundation<br/>DONE]
   s2[Stage 2<br/>Data layer<br/>DONE]
   s3[Stage 3<br/>Backtest + Desktop<br/>IN PROGRESS]
-  s4[Stage 4<br/>Results API<br/>TODO]
+  s4[Stage 4<br/>Results API<br/>MVP]
   s5[Stage 5<br/>LLM Analyst<br/>TODO]
   s6[Stage 6<br/>Strategy Authoring<br/>IN PROGRESS]
 
@@ -250,7 +251,7 @@ flowchart LR
 
 Подробности и DoD: [stage-3-backtest-and-desktop.md](stages/stage-3-backtest-and-desktop.md).
 
-### Stage 4 — Results API — TODO (сервис заведён, зрелость — впереди)
+### Stage 4 — Results API — IN PROGRESS (MVP submodule)
 
 Сервис **`results-api`** вынесен в **отдельный репозиторий** и подключён в meta как **submodule** `services/results-api` → `https://github.com/Algorhythm-LLC/results-api.git`. Уже есть read-only HTTP над ClickHouse (summary / trades / equity / compare). Для «закрытия» этапа 4 по изначальной спеке остаётся hardening: агрегаты по experiment, leaderboard, auth/rate-limit и т.д. Зависимость — стабильные таблицы результатов из этапа 3. Подробности: [stage-4-results-api.md](stages/stage-4-results-api.md), миграция: [stage-6-1-results-api-submodule.md](stages/stage-6-1-results-api-submodule.md).
 
@@ -260,7 +261,7 @@ flowchart LR
 
 ### Stage 6 — Strategy Authoring — IN PROGRESS
 
-Продуктовый слой над DSL/runtime уже получил первый MVP vertical slice: `draft -> preflight -> publish -> run -> compare` собран end-to-end через `control-plane`, `backtest-engine`, `control-desktop` и **`results-api`** (submodule). При этом full product maturity ещё не достигнута: монолитный strategy screen, **зрелость read-side / Stage 4** и ограниченный runtime-supported subset остаются следующими задачами. Подробности: [stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md).
+Продуктовый слой над DSL/runtime уже получил первый MVP vertical slice: `draft -> preflight -> publish -> run -> compare` собран end-to-end через `control-plane`, `backtest-engine`, `control-desktop` и **`results-api`** (submodule). При этом full product maturity ещё не достигнута: **зрелость read-side / Stage 4**, **стабилизация preflight/matrix** и ограниченный runtime-supported subset (следующий крупный slice — **PR-09** в [stage-6-1-pr-09-continuous-flip.md](stages/stage-6-1-pr-09-continuous-flip.md)). Подробности: [stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md).
 
 ---
 

@@ -15,13 +15,14 @@
 docs/
   project-spec.md              ← ХАБ: начни отсюда
   README.md                    ← этот файл — карта документации
+  canvas-project-status.md     ← визуальный статус (Canvas в Cursor)
   stages/
     stage-1-foundation.md              Stage 1 — Foundation (DONE)
     stage-2-data-layer.md              Stage 2 — Data layer (DONE)
     stage-3-backtest-and-desktop.md    Stage 3 — Backtest + Desktop (IN PROGRESS)
-    stage-4-results-api.md             Stage 4 — Results API (TODO)
+    stage-4-results-api.md             Stage 4 — Results API (MVP submodule, зрелость впереди)
     stage-5-llm-analyst.md             Stage 5 — LLM Analyst (TODO)
-    stage-6-strategy-authoring.md      Stage 6 — Strategy Authoring (TODO)
+    stage-6-strategy-authoring.md      Stage 6 — Strategy Authoring (IN PROGRESS)
   architecture/
     technical-charter.md                     (короткая копия устава; полный — в корне)
     adr-001-meta-repo-and-submodules.md
@@ -47,6 +48,7 @@ docs/
 | [architecture/adr-004-backtest-dsl.md](architecture/adr-004-backtest-dsl.md) | Работа с DSL стратегий |
 | [api/event-catalog.md](api/event-catalog.md) | При работе с NATS и outbox |
 | [../trading_platform_technical_charter.md](../trading_platform_technical_charter.md) | Обязательный регламент, источник правил |
+| [canvas-project-status.md](canvas-project-status.md) | Живой дашборд статуса в Cursor Canvas + как обновлять |
 
 ## Правила актуализации
 

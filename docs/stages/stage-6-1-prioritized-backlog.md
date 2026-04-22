@@ -142,11 +142,11 @@
 
 ## Итоговый backlog по порядку
 
-1. Операционно закрыть текущее состояние (`dev`, submodules, WIP hygiene) — **ongoing** (проверить незакоммиченный WIP в submodule **control-desktop** перед push).
+1. Операционно закрыть текущее состояние (`dev`, submodules, WIP hygiene) — **ongoing** (проверять `git status` внутри сабмодулей перед релизом; **control-desktop** основной WIP strategies — **запушен**).
 2. **`results-api` submodule** — **done** в meta (дальше — зрелость Stage 4).
 3. **`stage-3` / `project-spec`** — **done** (синхронизация с engine).
 4. Канонический E2E — **частично**: **go-smoke CI** в meta + ручной прогон `stage-6-1-canonical-e2e.ps1` при полном стеке.
 5. Стабилизировать Stage 6 без новых semantics — **ongoing** (truthful preflight, matrix, см. §4 выше).
-6. Декомпозиция **`strategies`** UI — **done** по структуре каталога `screens/strategies/` (закоммитить в submodule при готовности).
+6. Декомпозиция **`strategies`** UI — **done** (каталог `screens/strategies/` + коммит в **control-desktop** submodule, bump в meta).
 7. **PR-09** `continuous` / `flip` — **черновик** [stage-6-1-pr-09-continuous-flip.md](./stage-6-1-pr-09-continuous-flip.md); реализация — следующий крупный milestone.
 8. После PR-09 — compare/analytics polish.
