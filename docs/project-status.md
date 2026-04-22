@@ -1,6 +1,6 @@
 # Algorhythm — статус проекта (обзор)
 
-**Формат:** Markdown + [Mermaid](https://mermaid.js.org/) — отображается на GitHub/GitLab, в предпросмотре VS Code / Cursor и во многих wiki.
+**Формат:** таблицы и текст — всегда видны. Диаграммы — в блоках **Mermaid** (на [GitHub](https://github.com/Algorhythm-LLC/Algorhythm/blob/dev/docs/project-status.md) они превращаются в картинки). Если в редакторе блоки `mermaid` выглядят «пустыми», ниже для каждой схемы есть **ASCII-копия**, которая отображается без рендерера.
 
 **Снимок:** 2026-04-22 · **Meta-repo:** [Algorhythm-LLC/Algorhythm](https://github.com/Algorhythm-LLC/Algorhythm) · ветка разработки: `dev`
 
@@ -9,6 +9,19 @@
 ---
 
 ## Этапы (roadmap)
+
+**ASCII (всегда видно в любом просмотрщике):**
+
+```
+Закрыто          В работе                         Запланировано
+────────         ─────────────────────────────    ─────────────
+Stage 1 DONE ──► Stage 3 IN PROGRESS ──┬──► Stage 5 TODO
+Stage 2 DONE ──► Stage 4 IN PROGRESS ──┼──► (после 4)
+                  Stage 6 IN PROGRESS ─┘
+Связь этапов: 1→2→3→4; от 3 параллельно идёт 6; после 4 — 5.
+```
+
+**Mermaid (рендер на GitHub / с плагином Mermaid):**
 
 ```mermaid
 flowchart LR
@@ -41,6 +54,21 @@ flowchart LR
 ---
 
 ## Сабмодули и роли
+
+**ASCII (дерево meta-repo):**
+
+```
+Algorhythm (meta)
+├── modules/strategy-dsl
+├── services/control-plane
+├── services/backtest-engine
+├── services/control-desktop
+├── services/results-api
+├── services/market-data-ingestor
+└── services/feature-builder
+```
+
+**Mermaid:**
 
 ```mermaid
 flowchart TB
