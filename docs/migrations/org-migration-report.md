@@ -4,8 +4,8 @@
 
 Перенести все репозитории Algorhythm из личного GitHub в organization **`Algorhythm-LLC`**, зафиксировать **канонический нижний регистр** для документации и Go:
 
-- **Канон (docs, `.gitmodules` образцы, Go paths):** `github.com/algorhythm-llc/...` и URL вида `https://github.com/algorhythm-llc/<repo>.git`
-- **Git remotes на практике:** GitHub нормализует host/path; meta-repo часто фигурирует как `https://github.com/Algorhythm-LLC/Algorhythm.git`, submodules — как `https://github.com/algorhythm-llc/...`. Это одно и то же репо; писать каноном по-прежнему **lowercase** `algorhythm-llc`.
+- **Канон для Go module path:** `github.com/algorhythm-llc/...` (нижний регистр в module path и `GOPRIVATE`).
+- **Канон для HTTPS/SSH clone и `.gitmodules`:** `https://github.com/Algorhythm-LLC/<repo>.git` (org в URL — как у GitHub после переноса). Редирект со старого lowercase-URL может ещё работать, но **новые клоны и CI** должны использовать **Algorhythm-LLC**.
 
 Убрать персональные remotes (`Froloveee3/...`) и прежний псевдо-namespace `github.com/algorhythm/...` из активной документации и кода. Не использовать `url.insteadOf` как постоянный режим.
 
@@ -38,10 +38,10 @@
 
 | Artifact | Canonical value |
 |----------|-----------------|
-| Meta-repo URL | `https://github.com/algorhythm-llc/Algorhythm.git` (имя репозитория как у текущего: `Algorhythm`) |
-| `modules/strategy-dsl` remote | `https://github.com/algorhythm-llc/strategy-dsl.git` |
+| Meta-repo URL | `https://github.com/Algorhythm-LLC/Algorhythm.git` (имя репозитория как у текущего: `Algorhythm`) |
+| `modules/strategy-dsl` remote | `https://github.com/Algorhythm-LLC/strategy-dsl.git` |
 | Go module `strategy-dsl` | `github.com/algorhythm-llc/strategy-dsl` |
-| Service remotes | `https://github.com/algorhythm-llc/algorhythm-<service>.git` (имена репо **без переименования** в этой миграции) |
+| Service remotes | `https://github.com/Algorhythm-LLC/algorhythm-<service>.git` (имена репо **без переименования** в этой миграции) |
 | `control-plane` Go module | `github.com/algorhythm-llc/algorhythm-control-plane` |
 | `backtest-engine` Go module | `github.com/algorhythm-llc/algorhythm-backtest-engine` |
 | Semver после смены module path | **`v0.1.1`** для `strategy-dsl` (первый тег с путём `github.com/algorhythm-llc/strategy-dsl`; тег `v0.1.0` относится к историческому `module github.com/algorhythm/strategy-dsl`) |
@@ -81,7 +81,7 @@
 
 ### 4.4 Post-transfer canonical URLs
 
-После успешного transfer все `origin` / `.gitmodules` должны указывать на org-репозитории; **в документации и примеры команд** используйте lowercase (`algorhythm-llc`), даже если локальный `git remote -v` показывает `Algorhythm-LLC` — для GitHub это эквивалентно.
+После успешного transfer все `origin` / `.gitmodules` должны указывать на org-репозитории по URL вида **`https://github.com/Algorhythm-LLC/<repo>.git`**. Для **Go** по-прежнему канон module path **`github.com/algorhythm-llc/...`** (нижний регистр) и `GOPRIVATE=github.com/algorhythm-llc/*`.
 
 ---
 
@@ -135,7 +135,7 @@
 
 ### Post-migration `.gitmodules` (target)
 
-Все `url =` заменены на `https://github.com/algorhythm-llc/<same-repo-name>.git` — **APPLIED** в рабочей копии.
+Все `url =` заменены на `https://github.com/Algorhythm-LLC/<same-repo-name>.git` — **APPLIED** в рабочей копии.
 
 Команды:
 
@@ -186,7 +186,7 @@ git config --global --unset-all url."https://github.com/Froloveee3/strategy-dsl.
 ### Команды
 
 ```bash
-git clone --recurse-submodules https://github.com/algorhythm-llc/Algorhythm.git
+git clone --recurse-submodules https://github.com/Algorhythm-LLC/Algorhythm.git
 cd Algorhythm
 git submodule update --init --recursive
 ```
@@ -200,7 +200,7 @@ git submodule update --init --recursive
 | `go test ./...` (backtest-engine, feature-builder, MDI) | **PASS** | |
 | `git submodule sync --recursive` | **PASS** | |
 
-**Примечание:** `origin` meta-repo может отображаться как `https://github.com/Algorhythm-LLC/Algorhythm.git` (mixed case org), submodule — чаще `algorhythm-llc` в lowercase; канон для docs — [§1](#1-goal). Ветка **dev** запушена на org-meta.
+**Примечание:** и meta, и сабмодули должны использовать **одинаковый** org-сегмент в HTTPS URL: **`Algorhythm-LLC`** (см. [§1](#1-goal), [Appendix A](#appendix-a-migration-target-table-canonical-urls)). Ветка **dev** запушена на org-meta.
 
 ---
 
@@ -223,17 +223,17 @@ git submodule update --init --recursive
 
 ## Appendix A: Migration target table (canonical URLs)
 
-Канон для таблицы и Go — **lowercase** `algorhythm-llc`. Эквивалент с сегментом `Algorhythm-LLC` в URL допустим GitHub-ом; в новых документах придерживайтесь lowercase.
+Канон для колонки ниже — **HTTPS URL с org `Algorhythm-LLC`**. Module path в Go остаётся **`github.com/algorhythm-llc/...`** (отдельная строка [§1](#1-goal)).
 
 | Component | Canonical `git` URL |
 |-----------|----------------------|
-| Meta | `https://github.com/algorhythm-llc/Algorhythm.git` |
-| strategy-dsl | `https://github.com/algorhythm-llc/strategy-dsl.git` |
-| control-plane | `https://github.com/algorhythm-llc/algorhythm-control-plane.git` |
-| market-data-ingestor | `https://github.com/algorhythm-llc/algorhythm-market-data-ingestor.git` |
-| feature-builder | `https://github.com/algorhythm-llc/algorhythm-feature-builder.git` |
-| control-desktop | `https://github.com/algorhythm-llc/algorhythm-control-desktop.git` |
-| backtest-engine | `https://github.com/algorhythm-llc/algorhythm-backtest-engine.git` |
+| Meta | `https://github.com/Algorhythm-LLC/Algorhythm.git` |
+| strategy-dsl | `https://github.com/Algorhythm-LLC/strategy-dsl.git` |
+| control-plane | `https://github.com/Algorhythm-LLC/algorhythm-control-plane.git` |
+| market-data-ingestor | `https://github.com/Algorhythm-LLC/algorhythm-market-data-ingestor.git` |
+| feature-builder | `https://github.com/Algorhythm-LLC/algorhythm-feature-builder.git` |
+| control-desktop | `https://github.com/Algorhythm-LLC/algorhythm-control-desktop.git` |
+| backtest-engine | `https://github.com/Algorhythm-LLC/algorhythm-backtest-engine.git` |
 
 ## Appendix B: Pre-migration findings (grep)
 
@@ -247,7 +247,7 @@ git submodule update --init --recursive
 Состояние на момент последней локальной проверки рабочей копии (организация, теги, Go):
 
 - [x] Все репозитории видны под org с ожидаемыми именами (`Algorhythm-LLC` на GitHub)  
-- [x] `.gitmodules` только org-URL; канон записи — `github.com/algorhythm-llc/...`  
+- [x] `.gitmodules` только org-URL `https://github.com/Algorhythm-LLC/...`; Go path — `github.com/algorhythm-llc/...`  
 - [x] `git submodule sync --recursive` / `submodule update --init --recursive` без ошибок  
 - [x] `go env GOPRIVATE=github.com/algorhythm-llc/*` (или эквивалент для сборки)  
 - [x] `strategy-dsl` тег `v0.1.1` на org-remote  
@@ -263,7 +263,7 @@ git submodule update --init --recursive
 
 ```bash
 # 1) Meta-repo: canonical remote
-git remote set-url origin https://github.com/algorhythm-llc/Algorhythm.git
+git remote set-url origin https://github.com/Algorhythm-LLC/Algorhythm.git
 git fetch origin
 
 # 2–3) Submodules подтянуть под новые URL
@@ -272,7 +272,7 @@ git submodule update --init --recursive
 
 # 4) strategy-dsl: push main + тег v0.1.1 (из каталога submodule)
 cd modules/strategy-dsl
-git remote set-url origin https://github.com/algorhythm-llc/strategy-dsl.git
+git remote set-url origin https://github.com/Algorhythm-LLC/strategy-dsl.git
 git push -u origin main
 git tag v0.1.1
 git push origin v0.1.1

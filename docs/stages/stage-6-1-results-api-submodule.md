@@ -4,7 +4,7 @@
 
 ## Целевое состояние
 
-- Репозиторий `github.com/algorhythm-llc/results-api` (или `Algorhythm-LLC/results-api` после redirect), теги semver.
+- Репозиторий: HTTPS **`https://github.com/Algorhythm-LLC/results-api.git`**; Go module path (после выноса) — согласовать с ADR (например `github.com/algorhythm-llc/algorhythm-results-api`); теги semver.
 - В meta-repo: запись в `.gitmodules` + gitlink `services/results-api` → submodule.
 - CI: `go test ./...`, минимальный Dockerfile / release workflow (по аналогии с другими сервисами).
 - Контракт: только **read-only** HTTP поверх ClickHouse; auth/rate-limit позже.
