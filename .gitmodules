@@ -17,3 +17,6 @@
 [submodule "modules/strategy-dsl"]
 	path = modules/strategy-dsl
 	url = https://github.com/Algorhythm-LLC/strategy-dsl.git
+[submodule "services/results-api"]
+	path = services/results-api
+	url = https://github.com/Algorhythm-LLC/results-api.git
