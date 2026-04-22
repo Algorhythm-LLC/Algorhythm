@@ -187,6 +187,7 @@ Truthful runtime preflight требует резолва **feature set** (code +
 
 - **Упорядоченный execution backlog (пошаговый план после handoff):** `docs/stages/stage-6-1-prioritized-backlog.md`  
 - **PR-09 (черновик семантики и gate четырёх слоёв):** `docs/stages/stage-6-1-pr-09-continuous-flip.md`  
+- **Сводка статуса (Markdown + Mermaid, GitHub-friendly):** `docs/project-status.md`  
 - Следующая итерация Stage 6.1: `docs/stages/stage-6-1-next-iteration.md`  
 - Master backlog: `docs/stages/stage-6-1-master-backlog.md`  
 - Subset expansion: `docs/stages/stage-6-runtime-subset-expansion.md`  

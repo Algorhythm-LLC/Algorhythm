@@ -15,7 +15,7 @@
 docs/
   project-spec.md              ← ХАБ: начни отсюда
   README.md                    ← этот файл — карта документации
-  canvas-project-status.md     ← визуальный статус (Canvas в Cursor)
+  project-status.md            ← обзор этапов и сабмодулей (Markdown + Mermaid)
   stages/
     stage-1-foundation.md              Stage 1 — Foundation (DONE)
     stage-2-data-layer.md              Stage 2 — Data layer (DONE)
@@ -48,7 +48,7 @@ docs/
 | [architecture/adr-004-backtest-dsl.md](architecture/adr-004-backtest-dsl.md) | Работа с DSL стратегий |
 | [api/event-catalog.md](api/event-catalog.md) | При работе с NATS и outbox |
 | [../trading_platform_technical_charter.md](../trading_platform_technical_charter.md) | Обязательный регламент, источник правил |
-| [canvas-project-status.md](canvas-project-status.md) | Живой дашборд статуса в Cursor Canvas + как обновлять |
+| [project-status.md](project-status.md) | Сводка этапов, репозиториев и CI (Mermaid + таблицы) |
 
 ## Правила актуализации
 
