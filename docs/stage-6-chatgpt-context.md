@@ -8,6 +8,8 @@
 
 Монорепозиторий **Algorhythm**: несколько сервисов в `services/`, общая документация в `docs/`.
 
+**Git / сабмодули:** канонические **HTTPS URL** в `.gitmodules` — `https://github.com/Algorhythm-LLC/<repo>.git` (после `git submodule sync`). **Go module paths** остаются в нижнем регистре: `github.com/algorhythm-llc/...` и `GOPRIVATE=github.com/algorhythm-llc/*`.
+
 Ключевые сервисы для Stage 6:
 
 | Сервис | Путь | Роль |
