@@ -11,6 +11,7 @@
 # Usage:
 #   .\scripts\stage-6-1-canonical-e2e.ps1 -FeatureSetVersionId "<uuid-from-DB>"
 #   .\scripts\stage-6-1-canonical-e2e.ps1 -ControlPlaneUrl http://127.0.0.1:8080 -ResultsApiUrl http://127.0.0.1:8082 -FeatureSetVersionId "<uuid>"
+#   .\scripts\stage-6-1-canonical-e2e.ps1 -FeatureSetVersionId "<uuid>" -IncludePR09  # also exercise continuous + flip
 
 param(
     [Parameter(Mandatory = $true)]
@@ -20,7 +21,11 @@ param(
     [string]$ResultsApiUrl = "http://localhost:8082",
     [string]$TemplateCode = "stage6_1_canonical_v1",
     [string]$Symbol = "BTCUSDT",
-    [int]$RunTimeoutSec = 120
+    [int]$RunTimeoutSec = 120,
+
+    # Stage 6.1 PR-09: when set, also publishes and runs `reentry_mode=continuous`
+    # and `reentry_mode=flip` variants, then compares them against the baseline.
+    [switch]$IncludePR09
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,6 +88,24 @@ function DslV1WithCloseLong([string]$code) {
     return $h
 }
 
+# Stage 6.1 PR-09: continuous — keeps long-only baseline, just allows next-bar
+# re-entry by dropping the 2-bar cooldown. No opposite side required.
+function DslV1Continuous([string]$code) {
+    $h = DslV1Baseline $code
+    $h["execution"]["reentry_mode"] = "continuous"
+    return $h
+}
+
+# Stage 6.1 PR-09: flip — needs allow_short=true plus both `entry` and
+# `entry_short`; same-bar reversal on opposite-side entry signal.
+function DslV1Flip([string]$code) {
+    $h = DslV1Baseline $code
+    $h["execution"]["allow_short"] = $true
+    $h["execution"]["reentry_mode"] = "flip"
+    $h["entry_short"] = @{ type = "indicator_condition"; params = @{ left = "ema_20_lt_ema_50"; right = "" } }
+    return $h
+}
+
 Write-Host "=== stage-6-1-canonical-e2e: CP=$cp RS=$rs template=$TemplateCode ===" -ForegroundColor Cyan
 
 try {
@@ -129,6 +152,14 @@ $svA = Publish-Version (DslV1Baseline $TemplateCode)
 $svB = Publish-Version (DslV1WithCloseLong $TemplateCode)
 Write-Host "strategy_version A=$svA B=$svB" -ForegroundColor Green
 
+$svC = $null
+$svD = $null
+if ($IncludePR09) {
+    $svC = Publish-Version (DslV1Continuous $TemplateCode)
+    $svD = Publish-Version (DslV1Flip $TemplateCode)
+    Write-Host "strategy_version C(continuous)=$svC D(flip)=$svD" -ForegroundColor Green
+}
+
 $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 $batch = Cp "POST" "/api/v1/experiment-batches" @{
     name                     = "stage61_canonical_$ts"
@@ -137,17 +168,22 @@ $batch = Cp "POST" "/api/v1/experiment-batches" @{
 }
 $bid = $batch.id
 
-$runA = Cp "POST" "/api/v1/experiment-runs/request" @{
-    experiment_batch_id  = $bid
-    strategy_version_id  = $svA
-    symbol               = $Symbol
-    parameters           = @{}
+function Request-Run([string]$svId) {
+    return Cp "POST" "/api/v1/experiment-runs/request" @{
+        experiment_batch_id  = $bid
+        strategy_version_id  = $svId
+        symbol               = $Symbol
+        parameters           = @{}
+    }
 }
-$runB = Cp "POST" "/api/v1/experiment-runs/request" @{
-    experiment_batch_id  = $bid
-    strategy_version_id  = $svB
-    symbol               = $Symbol
-    parameters           = @{}
+
+$runA = Request-Run $svA
+$runB = Request-Run $svB
+$runC = $null
+$runD = $null
+if ($IncludePR09) {
+    $runC = Request-Run $svC
+    $runD = Request-Run $svD
 }
 
 $fa = Wait-ExperimentRun $runA.id
@@ -156,16 +192,39 @@ if ($fa.status -ne "completed") { Fail "run A $($runA.id) status=$($fa.status)" 
 if ($fb.status -ne "completed") { Fail "run B $($runB.id) status=$($fb.status)" }
 Write-Host "runs completed A=$($runA.id) B=$($runB.id)" -ForegroundColor Green
 
+if ($IncludePR09) {
+    $fc = Wait-ExperimentRun $runC.id
+    $fd = Wait-ExperimentRun $runD.id
+    if ($fc.status -ne "completed") { Fail "run C (continuous) $($runC.id) status=$($fc.status)" }
+    if ($fd.status -ne "completed") { Fail "run D (flip) $($runD.id) status=$($fd.status)" }
+    Write-Host "runs completed C(continuous)=$($runC.id) D(flip)=$($runD.id)" -ForegroundColor Green
+}
+
 $sumA = Rs "GET" "/api/v1/runs/$($runA.id)/summary"
 $sumB = Rs "GET" "/api/v1/runs/$($runB.id)/summary"
 if ($null -eq $sumA) { Fail "results summary A empty" }
 if ($null -eq $sumB) { Fail "results summary B empty" }
+
+if ($IncludePR09) {
+    $sumC = Rs "GET" "/api/v1/runs/$($runC.id)/summary"
+    $sumD = Rs "GET" "/api/v1/runs/$($runD.id)/summary"
+    if ($null -eq $sumC) { Fail "results summary C (continuous) empty" }
+    if ($null -eq $sumD) { Fail "results summary D (flip) empty" }
+}
 
 $cmpRuns = Rs "GET" "/api/v1/compare/runs?left_run_id=$($runA.id)&right_run_id=$($runB.id)"
 if ($null -eq $cmpRuns) { Fail "compare runs empty" }
 
 $cmpVer = Rs "GET" "/api/v1/compare/versions?left_version_id=$svA&right_version_id=$svB"
 if ($null -eq $cmpVer) { Fail "compare versions empty" }
+
+if ($IncludePR09) {
+    # PR-09: ensure continuous and flip produce distinct shapes vs baseline.
+    $cmpAC = Rs "GET" "/api/v1/compare/runs?left_run_id=$($runA.id)&right_run_id=$($runC.id)"
+    if ($null -eq $cmpAC) { Fail "compare runs A vs C (continuous) empty" }
+    $cmpAD = Rs "GET" "/api/v1/compare/runs?left_run_id=$($runA.id)&right_run_id=$($runD.id)"
+    if ($null -eq $cmpAD) { Fail "compare runs A vs D (flip) empty" }
+}
 
 Write-Host "=== stage-6-1-canonical-e2e: PASS ===" -ForegroundColor Green
 exit 0

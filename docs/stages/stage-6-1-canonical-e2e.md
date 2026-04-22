@@ -105,6 +105,47 @@
 
 ---
 
+## Шаг I (PR-09) — `continuous` / `flip` (reentry mode)
+
+Цель: на том же feature set провести реальный run-path для `execution.reentry_mode=continuous` и `execution.reentry_mode=flip`, закрыв единственное «грязное» место после релиза `strategy-dsl v0.1.4`.
+
+### I1 — версия C (continuous)
+
+1. В builder draft: как baseline, но включить чекбокс **Continuous (reentry_mode=continuous)**.
+2. Preflight должен остаться `valid=true` и `runtime_supported=true` (`execution.reentry_mode=continuous` уходит в canonical DSL; engine compile парсит значение).
+3. Publish → получить `strategy_version.id` версии C.
+4. Request run → получить `run_id_c`.
+
+### I2 — версия D (flip)
+
+1. В builder draft: как baseline, но
+   - включить **Allow short in execution** (`allow_short=true`);
+   - включить `open_long` **и** `open_short` (обе стороны должны быть заполнены);
+   - включить чекбокс **Flip (reentry_mode=flip)**.
+   - **Не** включать `Continuous` одновременно — compiler вернёт `unsupported_reason`.
+2. Preflight должен оставаться `runtime_supported=true`.
+3. Publish → `strategy_version.id` версии D; Request run → `run_id_d`.
+
+### I3 — проверка «не тихого downgrade»
+
+1. Включить `Flip` без одной из сторон (или без `allow_short=true`) → preflight должен вернуть **`unsupported_reason`**, publish **не должен** проходить.
+2. Включить одновременно `Continuous` и `Flip` → `unsupported_reason` (они взаимоисключающие в builder).
+
+### I4 — compare
+
+1. Сравнить `run_id_a` (baseline, `single`) vs `run_id_c` (`continuous`) — ожидается **больше сделок** при сохранённом сигнале (дропнут 2-bar cooldown).
+2. Сравнить `run_id_a` vs `run_id_d` (`flip`) — ожидается иная форма equity/trades (same-bar reversal по opposite-signal).
+
+**Автоматизация:** тот же прогон можно выполнить одной командой —
+
+```powershell
+.\scripts\stage-6-1-canonical-e2e.ps1 -FeatureSetVersionId "<uuid>" -IncludePR09
+```
+
+Скрипт опубликует версии **C (continuous)** и **D (flip)** дополнительно к A/B и соберёт `compare/runs A↔C` и `A↔D`.
+
+---
+
 ## Шаг H (PR-07) — independent `close_long` / `close_short` + compare “common exit vs side exits”
 
 Цель: показать **реальный продуктовый** смысл PR-07 — одна и та же стратегия, но разная логика выхода из long/short.

@@ -60,7 +60,7 @@
 | `regime_exit` / `volatility_exit` | — | — | yes | Сейчас запрещено compiler’ом. |
 | `hard_max_holding_bars` | — | — | yes | Сейчас запрещено compiler’ом. |
 
-*Примечание:* для строк **yes** в колонке supported_now при расхождении compile vs executor нужно либо выровнять engine, либо опустить строку в accepted_not_executable до фикса.
+*Примечание:* supported_now по текущему runtime подтверждено: `engine.go` (ветки `tp_sl` / `trailing_stop` / `time_based` внутри `shouldExitMechanical`) исполняет все три блока; при `execution.signal_only=true` они отключены как источник выхода (см. PR-08). Остальные строки блокируются компайлером с явной причиной (`collectUnsupportedReasons`).
 
 ---
 
@@ -92,8 +92,8 @@
 
 | Semantics | supported_now | accepted_not_executable | planned_later | Примечание |
 |-----------|---------------|-------------------------|---------------|------------|
-| `regime_filter` | yes | — | — | Если engine не исполняет — опустить строку в accepted_not_executable до подтверждения. |
-| `volatility_filter` | yes | — | — | Аналогично. |
+| `regime_filter` | yes | — | — | Executor: `runtime.evaluateV1Filters` (`v1eval.go`) фильтрует бар по `regime_code`, бар не-allowed → не берётся сигнал. |
+| `volatility_filter` | yes | — | — | Аналогично через колонку `vol_bucket`. |
 
 ---
 

@@ -72,10 +72,11 @@
 **Что сделано по автоматизации кода:**
 
 - В **корне meta-repo** добавлен workflow **`.github/workflows/go-smoke.yml`** — при push/PR в `main`/`dev` прогоняются `go test ./...` для `modules/strategy-dsl`, `services/control-plane`, `services/backtest-engine`, `services/results-api` (checkout с **recursive submodules**).
+- `scripts/stage-6-1-canonical-e2e.ps1` расширен параметром **`-IncludePR09`**: при флаге публикуются и прогоняются дополнительные версии **C (`reentry_mode=continuous`)** и **D (`reentry_mode=flip` + `allow_short=true` + обе стороны)**, собираются `compare/runs A↔C` и `A↔D`. Документация — шаг I в [stage-6-1-canonical-e2e.md](./stage-6-1-canonical-e2e.md).
 
 **Что остаётся (ручной/стендовый gate):**
 
-- Прогон `stage-6-1-canonical-e2e.ps1` с реальным `-FeatureSetVersionId` на окружении со стеком + PostgreSQL (скрипт требует живые сервисы).
+- Прогон `stage-6-1-canonical-e2e.ps1 -FeatureSetVersionId "<uuid>" -IncludePR09` на окружении со стеком + PostgreSQL (скрипт требует живые сервисы).
 
 **Критерий готовности (полный):** сценарий из §6-1-canonical-e2e проходит end-to-end на чистом clone после `submodule update`; документирован; частично подкреплён CI на уровне Go-модулей.
 
@@ -87,16 +88,22 @@
 
 После инфраструктуры — hardening Stage 6 **без** новых semantics (см. [stage-6-1-next-iteration.md](./stage-6-1-next-iteration.md)).
 
-**Что сделать:**
+**Что сделано:**
 
-- truthfulness preflight для всех текущих **supported_now** семантик;
-- выровнять ошибки / `unsupported_reasons`;
-- UX вокруг `feature_set_version_id`, required columns, `runtime_supported`;
-- пройти [stage-6-runtime-support-matrix.md](./stage-6-runtime-support-matrix.md) и убедиться, что каждая строка **supported_now** подкреплена четырьмя слоями + тестами.
+- `stage-6-runtime-support-matrix.md` пройден построчно и выровнен с кодом:
+  - `regime_filter` / `volatility_filter` — `supported_now` подкреплён ссылкой на `runtime.evaluateV1Filters` (`services/backtest-engine/internal/runtime/v1eval.go`);
+  - `tp_sl` / `trailing_stop` / `time_based` — `supported_now` подтверждён ветками `shouldExitMechanical` в `services/backtest-engine/internal/runtime/engine.go`; при `execution.signal_only=true` они отключаются как источник выхода (PR-08);
+  - `opposite_signal_exit` / `regime_exit` / `volatility_exit` / `hard_max_holding_bars` / `max_concurrent>1` / `drawdown_stop_bps` / `kill_switch` — `planned_later`, блокируются в `collectUnsupportedReasons` (`services/control-plane/internal/authoring/compile.go`) с явной причиной.
+  - `reverse_on_close` / `allow_reentry` / `cooldown_after_exit_bars` — `planned_later`, блокируются там же.
+
+**Что остаётся:**
+
+- проверить UX вокруг `feature_set_version_id`, `required_columns`, `runtime_supported` на стенде (см. §3 — ждёт прогона E2E);
+- прогонять matrix-строки через `stage-6-1-canonical-e2e.ps1 -IncludePR09` при любом изменении compiler gate.
 
 **Критерий готовности:** нет «зелёного» preflight там, где run падает; matrix = реальность; no silent downgrade.
 
-**Риск:** начать PR-09 на нестабильном фундаменте.
+**Риск:** начать следующий semantic slice на нестабильном фундаменте.
 
 ---
 
@@ -147,8 +154,8 @@
 1. Операционно закрыть текущее состояние (`dev`, submodules, WIP hygiene) — **ongoing** (проверять `git status` внутри сабмодулей перед релизом; **control-desktop** основной WIP strategies — **запушен**).
 2. **`results-api` submodule** — **done** в meta (дальше — зрелость Stage 4).
 3. **`stage-3` / `project-spec`** — **done** (синхронизация с engine).
-4. Канонический E2E — **частично**: **go-smoke CI** в meta + ручной прогон `stage-6-1-canonical-e2e.ps1` при полном стеке.
-5. Стабилизировать Stage 6 без новых semantics — **ongoing** (truthful preflight, matrix, см. §4 выше).
+4. Канонический E2E — **частично**: **go-smoke CI** в meta + скрипт `stage-6-1-canonical-e2e.ps1 -IncludePR09` покрывает baseline + close_long + continuous + flip (остаётся ручной прогон при полном стеке).
+5. Стабилизировать Stage 6 без новых semantics — **done по коду**: matrix выровнен со ссылками на `runtime.evaluateV1Filters` / `shouldExitMechanical` / `collectUnsupportedReasons`; остаётся UX-проверка на стенде.
 6. Декомпозиция **`strategies`** UI — **done** (каталог `screens/strategies/` + коммит в **control-desktop** submodule, bump в meta).
 7. **PR-09** `continuous` / `flip` — **shipped** ([stage-6-1-pr-09-continuous-flip.md](./stage-6-1-pr-09-continuous-flip.md)); `strategy-dsl v0.1.4` выпущен, `replace` снят, UI-copy в builder'e готов; остаётся canonical E2E с новым DSL на живом стенде.
 8. После PR-09 — compare/analytics polish.
