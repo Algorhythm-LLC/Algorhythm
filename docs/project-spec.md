@@ -196,6 +196,7 @@ sequenceDiagram
 | 3 | Backtest engine + Control Desktop | **IN PROGRESS** | [stage-3-backtest-and-desktop.md](stages/stage-3-backtest-and-desktop.md) |
 | 4 | Results API и витрина | **TODO** | [stage-4-results-api.md](stages/stage-4-results-api.md) |
 | 5 | LLM Analyst | **TODO** | [stage-5-llm-analyst.md](stages/stage-5-llm-analyst.md) |
+| 6 | Strategy Authoring | **IN PROGRESS** | [stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md) |
 
 ```mermaid
 flowchart LR
@@ -204,8 +205,9 @@ flowchart LR
   s3[Stage 3<br/>Backtest + Desktop<br/>IN PROGRESS]
   s4[Stage 4<br/>Results API<br/>TODO]
   s5[Stage 5<br/>LLM Analyst<br/>TODO]
+  s6[Stage 6<br/>Strategy Authoring<br/>IN PROGRESS]
 
-  s1 --> s2 --> s3 --> s4 --> s5
+  s1 --> s2 --> s3 --> s4 --> s5 --> s6
 ```
 
 ---
@@ -259,6 +261,10 @@ flowchart LR
 
 Новый сервис `llm-analyst` (submodule `services/llm-analyst`), Python 3.12. Embeddings поверх results-api, Qdrant, consumer `llm.reindex.requested` / publisher `llm.reindex.completed`. Подробности: [stage-5-llm-analyst.md](stages/stage-5-llm-analyst.md).
 
+### Stage 6 — Strategy Authoring — IN PROGRESS
+
+Продуктовый слой над DSL/runtime уже получил первый MVP vertical slice: `draft -> preflight -> publish -> run -> compare` собран end-to-end через `control-plane`, `backtest-engine`, `control-desktop` и минимальный `results-api`. При этом full product maturity ещё не достигнута: монолитный strategy screen, локальный MVP-статус `results-api` и ограниченный runtime-supported subset остаются следующими задачами. Подробности: [stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md).
+
 ---
 
 ## 7. Структура репозитория
@@ -276,6 +282,7 @@ Algorhythm/
       stage-3-backtest-and-desktop.md
       stage-4-results-api.md
       stage-5-llm-analyst.md
+      stage-6-strategy-authoring.md
     architecture/                 # ADR
       technical-charter.md        # краткий зеркальный файл
       adr-001-meta-repo-and-submodules.md
@@ -328,4 +335,4 @@ Algorhythm/
 - [docs/architecture/](architecture/) — все ADR.
 - [docs/api/event-catalog.md](api/event-catalog.md) — NATS subjects.
 - [docs/api/integration-map.md](api/integration-map.md) — матрица интеграций.
-- Stage-файлы: [1](stages/stage-1-foundation.md), [2](stages/stage-2-data-layer.md), [3](stages/stage-3-backtest-and-desktop.md), [4](stages/stage-4-results-api.md), [5](stages/stage-5-llm-analyst.md).
+- Stage-файлы: [1](stages/stage-1-foundation.md), [2](stages/stage-2-data-layer.md), [3](stages/stage-3-backtest-and-desktop.md), [4](stages/stage-4-results-api.md), [5](stages/stage-5-llm-analyst.md), [6](stages/stage-6-strategy-authoring.md).

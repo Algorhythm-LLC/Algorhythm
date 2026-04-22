@@ -17,7 +17,7 @@
 
 **Правило Stage 6.1:** нельзя переводить строку в **supported_now**, пока не обновлены **все четыре** слоя и тесты (см. [stage-6-1-master-backlog.md](./stage-6-1-master-backlog.md)).
 
-**Релизный контракт DSL:** строки PR-07 ниже считаются **shipped** вместе с тегом модуля **`github.com/algorhythm-llc/strategy-dsl v0.1.2`** (схема v1 + dispatch); сервисы `control-plane` / `backtest-engine` потребляют эту версию **без** `replace` в `go.mod`.
+**Релизный контракт DSL:** PR-07 (независимые `close_*` / `entry_short`) shipped с **`strategy-dsl v0.1.2`**. PR-08 добавляет **`execution.signal_only`** — тег **`strategy-dsl v0.1.3`** (сервисы: `require` без `replace`). Семантика: [stage-6-1-pr-08-signal-only.md](./stage-6-1-pr-08-signal-only.md).
 
 ---
 
@@ -41,7 +41,7 @@
 | `close_long` / `close_short` как **независимые** блоки | yes | — | — | PR-07: optional v1 `close_long` / `close_short` + runtime-side signal exits (OR с mechanical `exit`). |
 | `directional.mode = long_only / short_only` | yes | — | — | |
 | `directional.mode = both` | yes | — | — | PR-07: разрешён только если enabled **и** `open_long`, **и** `open_short` (см. compiler gates). |
-| `signal_only` | — | — | yes | Сейчас запрещено compiler’ом. |
+| `signal_only` | yes | — | — | PR-08: v1 `execution.signal_only` + builder `directional.signal_only`; не сочетается с `continuous`/`flip`/`reverse_on_close` (compiler gate). |
 | `continuous` / `flip` / `reverse_on_close` | — | — | yes | Сейчас запрещено compiler’ом. |
 | `allow_reentry` / `cooldown_after_exit_bars` | — | — | yes | Сейчас запрещено compiler’ом. |
 
@@ -51,9 +51,9 @@
 
 | Semantics | supported_now | accepted_not_executable | planned_later | Примечание |
 |-----------|---------------|-------------------------|---------------|------------|
-| `tp_sl` (stop + take profit bps) | yes | — | — | Builder `exit_policy.kind=tp_sl`. |
-| `trailing_stop` | yes | — | — | В builder mapping есть; исполнимость на run path — только если engine v1 реально поддерживает (проверять при расширении subset). |
-| `time_based` (`max_holding_bars`) | yes | — | — | Аналогично: наличие в compile ≠ исполнение без проверки engine. |
+| `tp_sl` (stop + take profit bps) | yes | — | — | Builder `exit_policy.kind=tp_sl`. При **`execution.signal_only=true`** механический `tp_sl` **не** закрывает открытую позицию (см. PR-08). |
+| `trailing_stop` | yes | — | — | В builder mapping есть; при `signal_only` не используется для закрытия открытой позиции. |
+| `time_based` (`max_holding_bars`) | yes | — | — | При `signal_only` не используется для закрытия открытой позиции. |
 | `opposite_signal_exit` | — | — | yes | Сейчас запрещено compiler’ом как advanced exit. |
 | `regime_exit` / `volatility_exit` | — | — | yes | Сейчас запрещено compiler’ом. |
 | `hard_max_holding_bars` | — | — | yes | Сейчас запрещено compiler’ом. |
@@ -80,6 +80,7 @@
 |-----------|---------------|-------------------------|---------------|------------|
 | `fee_bps` / `slippage_bps` | yes | — | — | |
 | `allow_short` | yes | — | — | |
+| `signal_only` | yes | — | — | PR-08: optional boolean в v1 `execution`; runtime держит позицию по сигналу входа / `close_*`, см. note. |
 | `fill_model_kind = same_bar_close` | yes | — | — | Engine preflight режет иные значения. |
 | Иные fill models | — | yes (v2 / future) | yes | |
 
@@ -117,3 +118,4 @@
 - Продуктовая спека этапа: [stage-6-strategy-authoring.md](./stage-6-strategy-authoring.md)
 - Отчёт о первом vertical slice: [stage-6-authoring-implementation-report.md](../stage-6-authoring-implementation-report.md)
 - План следующей итерации: [stage-6-1-next-iteration.md](./stage-6-1-next-iteration.md)
+- PR-08 (`signal_only`): [stage-6-1-pr-08-signal-only.md](./stage-6-1-pr-08-signal-only.md)

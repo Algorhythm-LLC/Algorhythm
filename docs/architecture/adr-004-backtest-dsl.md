@@ -189,6 +189,7 @@ Engine не владеет бизнес-жизненным циклом run. Э�
 - Стратегия описывается данными, не кодом. Новая логика = новая `strategy_version`.
 - `backtest-engine` остаётся единственным интерпретатором DSL.
 - v1 DSL'ы продолжают работать без изменений.
+- Product-layer authoring может использовать отдельную draft model, но publish boundary обязан сводить её к canonical DSL перед записью в `strategy_versions`; UI-draft не становится вторым runtime-контрактом.
 - v2 добавляет композицию условий, массовые entries/exits, position/risk/portfolio management, time constraints, feature dependency. Это платформа, а не «ещё один тип блока».
 - Engine получает компилируемый план. Стоимость экспрессивности схемы уплачивается один раз на run, а не на каждом баре.
 - Terminal state переезжает под `control-plane`, engine остаётся чистым вычислителем.

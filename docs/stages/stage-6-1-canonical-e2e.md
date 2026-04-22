@@ -32,6 +32,8 @@
    - дублирование в `builder.instrument_scope` / `data_requirements` (это нормально для текущего UI)
 5. Нажать **Сохранить draft** — получить `draft id` в ответе и вписать в поле **Draft ID**.
 
+**Опционально (PR-08):** включить в builder флаг **`signal_only`** (и при необходимости `close_*`) — тот же маршрут preflight → publish → run должен оставаться валидным при корректном feature set; ожидаемое поведение на run path описано в [stage-6-1-pr-08-signal-only.md](./stage-6-1-pr-08-signal-only.md).
+
 Ожидание:
 
 - preflight далее не должен быть «зелёным без данных»: без UUID binding preflight вернёт ошибку `feature_set_binding`.

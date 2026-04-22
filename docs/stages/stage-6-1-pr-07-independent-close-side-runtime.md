@@ -24,12 +24,16 @@ End-to-end support for **independent** `close_long` / `close_short` signal exits
 
 ### Close vs mechanical `exit`
 
-On each bar, for an open position:
+On each bar, for an open position (default `execution.signal_only=false`):
 
-- mechanical `exit` (`tp_sl` / `trailing_stop` / `time_based`) is evaluated **OR**
-- side signal exit is evaluated:
-  - long: `close_long` (if present)
-  - short: `close_short` (if present)
+- side signal exit is evaluated **first** (if present in DSL):
+  - long: `close_long`
+  - short: `close_short`
+- otherwise, mechanical `exit` (`tp_sl` / `trailing_stop` / `time_based`) is evaluated.
+
+If both could fire on the same bar, **`close_*` wins** (PR-08 exit ordering; see [stage-6-1-pr-08-signal-only.md](./stage-6-1-pr-08-signal-only.md)).
+
+When **`execution.signal_only=true`**, mechanical `exit` does **not** close an open position; use the PR-08 note for signal-hold rules.
 
 ### Ordering / “close wins”
 

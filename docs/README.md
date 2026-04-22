@@ -21,6 +21,7 @@ docs/
     stage-3-backtest-and-desktop.md    Stage 3 — Backtest + Desktop (IN PROGRESS)
     stage-4-results-api.md             Stage 4 — Results API (TODO)
     stage-5-llm-analyst.md             Stage 5 — LLM Analyst (TODO)
+    stage-6-strategy-authoring.md      Stage 6 — Strategy Authoring (TODO)
   architecture/
     technical-charter.md                     (короткая копия устава; полный — в корне)
     adr-001-meta-repo-and-submodules.md
@@ -41,6 +42,7 @@ docs/
 |---|---|
 | [project-spec.md](project-spec.md) | Всегда первым — контекст и roadmap |
 | [stages/stage-3-backtest-and-desktop.md](stages/stage-3-backtest-and-desktop.md) | Текущий фокус разработки |
+| [stages/stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md) | Полная спека этапа создания стратегий |
 | [architecture/adr-003-service-boundaries.md](architecture/adr-003-service-boundaries.md) | Граничные обязанности сервисов |
 | [architecture/adr-004-backtest-dsl.md](architecture/adr-004-backtest-dsl.md) | Работа с DSL стратегий |
 | [api/event-catalog.md](api/event-catalog.md) | При работе с NATS и outbox |
