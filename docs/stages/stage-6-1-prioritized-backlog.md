@@ -114,19 +114,21 @@
 
 ## 6. PR-09 — `continuous` / `flip` как следующий semantic slice
 
-Следующий **содержательный** milestone после стабилизации и read-side. Не смешивать с несвязанными рефакторами.
+**Статус:** **реализовано в коде** (4 слоя). Semantics заморожены в [stage-6-1-pr-09-continuous-flip.md](./stage-6-1-pr-09-continuous-flip.md).
 
-**Черновик плана и gate четырёх слоёв:** [stage-6-1-pr-09-continuous-flip.md](./stage-6-1-pr-09-continuous-flip.md) (семантика и acceptance — дописать перед изменением schema).
+**Сделано:**
 
-**Что сделать:**
+- **strategy-dsl v1 schema:** optional `execution.reentry_mode ∈ {single, continuous, flip}` (+ validator tests, README/PUBLISH → `v0.1.4`).
+- **backtest-engine dslcompile:** `V1ExecutionPlan.ReentryMode` + неизвестное значение → compile error (+ тесты).
+- **backtest-engine runtime:** `exitReason` encode precedence (`close_* → mechanical → flip → signal-hold`); same-bar reversal для `flip`; cooldown 1-бар для `continuous`/`flip`, 2-бара для `single` (+ unit-тесты continuous, flip, single regression).
+- **control-plane authoring/compile.go:** `resolveReentryMode` маппит builder `Directional.{Continuous,Flip}` → `execution.reentry_mode`; gate: flip требует `allow_short=true` + обе стороны; `reverse_on_close` / `allow_reentry` / `cooldown_after_exit_bars` остаются blocked (+ тесты на все комбинации).
+- **matrix:** строки `continuous` / `flip` переведены в **supported_now**; `reverse_on_close` / `allow_reentry` остаются `planned_later`.
 
-- утвердить semantics: same-bar vs next-bar, precedence exits vs reopen, cooldown, fees/slippage на reversal, связь с `signal_only`, `close_*`, `reverse_on_close`;
-- провести через **4 слоя:** authoring/compiler → CP preflight → engine preflight → executor + тесты;
-- обновить matrix в **supported_now** только после end-to-end.
+**Остаётся (операционно):**
 
-**Критерий готовности:** исполнение в engine; preflight честно режет комбо; compare показывает разницу версий; docs/matrix/тесты обновлены.
-
-**Риск:** state machine, same-bar ordering, reverse fees — нельзя втаскивать «между делом».
+- ~~cut тег `strategy-dsl v0.1.4` в апстриме~~ — **сделано** (`https://github.com/Algorhythm-LLC/strategy-dsl` tag `v0.1.4`); `services/control-plane/go.mod` и `services/backtest-engine/go.mod` теперь `require github.com/algorhythm-llc/strategy-dsl v0.1.4` без `replace`.
+- прогон канонического E2E с DSL, где `execution.reentry_mode` непустой — чтобы пройти реальный `draft → preflight → publish → run → compare`.
+- ~~UI-copy в control-desktop builder'е (пояснения continuous/flip)~~ — **сделано:** `frontend/src/screens/strategies/sections/draftSection.ts` теперь содержит inline-hints для `signal_only`, `continuous`, `flip`, `reverse_on_close`, `allow_reentry`, `cooldown_after_exit_bars` с разметкой supported_now / planned_later.
 
 ---
 
@@ -148,5 +150,5 @@
 4. Канонический E2E — **частично**: **go-smoke CI** в meta + ручной прогон `stage-6-1-canonical-e2e.ps1` при полном стеке.
 5. Стабилизировать Stage 6 без новых semantics — **ongoing** (truthful preflight, matrix, см. §4 выше).
 6. Декомпозиция **`strategies`** UI — **done** (каталог `screens/strategies/` + коммит в **control-desktop** submodule, bump в meta).
-7. **PR-09** `continuous` / `flip` — **черновик** [stage-6-1-pr-09-continuous-flip.md](./stage-6-1-pr-09-continuous-flip.md); реализация — следующий крупный milestone.
+7. **PR-09** `continuous` / `flip` — **shipped** ([stage-6-1-pr-09-continuous-flip.md](./stage-6-1-pr-09-continuous-flip.md)); `strategy-dsl v0.1.4` выпущен, `replace` снят, UI-copy в builder'e готов; остаётся canonical E2E с новым DSL на живом стенде.
 8. После PR-09 — compare/analytics polish.

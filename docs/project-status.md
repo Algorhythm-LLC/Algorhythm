@@ -2,7 +2,7 @@
 
 **Формат:** таблицы и текст — всегда видны. Диаграммы — в блоках **Mermaid** (на [GitHub](https://github.com/Algorhythm-LLC/Algorhythm/blob/dev/docs/project-status.md) они превращаются в картинки). Если в редакторе блоки `mermaid` выглядят «пустыми», ниже для каждой схемы есть **ASCII-копия**, которая отображается без рендерера.
 
-**Снимок:** 2026-04-22 · **Meta-repo:** [Algorhythm-LLC/Algorhythm](https://github.com/Algorhythm-LLC/Algorhythm) · ветка разработки: `dev`
+**Снимок:** 2026-04-22 (PR-09 shipped; strategy-dsl v0.1.4 released) · **Meta-repo:** [Algorhythm-LLC/Algorhythm](https://github.com/Algorhythm-LLC/Algorhythm) · ветка разработки: `dev`
 
 Возврат к [project-spec.md](project-spec.md).
 
@@ -102,9 +102,10 @@ flowchart TB
 |----|------|-----------|
 | PR-07 | Close-side / dual entry | [stage-6-1-pr-07-independent-close-side-runtime.md](stages/stage-6-1-pr-07-independent-close-side-runtime.md) |
 | PR-08 | `signal_only` | [stage-6-1-pr-08-signal-only.md](stages/stage-6-1-pr-08-signal-only.md) |
-| — | strategy-dsl | **v0.1.3** |
+| PR-09 | `continuous` / `flip` (reentry_mode) | [stage-6-1-pr-09-continuous-flip.md](stages/stage-6-1-pr-09-continuous-flip.md) |
+| — | strategy-dsl | **v0.1.4** (released; `replace` снят в CP и engine) |
 
-**Следующий крупный slice:** PR-09 `continuous` / `flip` — [stage-6-1-pr-09-continuous-flip.md](stages/stage-6-1-pr-09-continuous-flip.md) (черновик семантики).
+**Следующий semantic slice не выбран.** Кандидаты: `reverse_on_close`, явный `allow_reentry` / `cooldown`, или DSL v2 executor. Текущий фокус — canonical E2E на стенде с новым DSL.
 
 ---
 
@@ -120,10 +121,9 @@ flowchart TB
 
 ## Следующие шаги (кратко)
 
-1. Прогнать **canonical E2E** на стенде с `-FeatureSetVersionId`.
-2. Стабилизировать **preflight** и **runtime support matrix** без новых семантик.
-3. Утвердить семантику **PR-09**, затем четыре слоя реализации.
-4. Зрелость **Stage 4** (results-api): агрегаты, auth, rate-limit по спеке.
+1. Прогнать **canonical E2E** на стенде с `-FeatureSetVersionId` **и** DSL, где `execution.reentry_mode` ≠ `single`.
+2. Зрелость **Stage 4** (results-api): агрегаты, auth, rate-limit по спеке.
+3. Выбрать следующий semantic slice осознанно (`reverse_on_close` / `allow_reentry` / v2 executor).
 
 ---
 

@@ -17,7 +17,7 @@
 
 **Правило Stage 6.1:** нельзя переводить строку в **supported_now**, пока не обновлены **все четыре** слоя и тесты (см. [stage-6-1-master-backlog.md](./stage-6-1-master-backlog.md)).
 
-**Релизный контракт DSL:** PR-07 (независимые `close_*` / `entry_short`) shipped с **`strategy-dsl v0.1.2`**. PR-08 добавляет **`execution.signal_only`** — тег **`strategy-dsl v0.1.3`** (сервисы: `require` без `replace`). Семантика: [stage-6-1-pr-08-signal-only.md](./stage-6-1-pr-08-signal-only.md).
+**Релизный контракт DSL:** PR-07 (независимые `close_*` / `entry_short`) shipped с **`strategy-dsl v0.1.2`**. PR-08 добавляет **`execution.signal_only`** — тег **`strategy-dsl v0.1.3`**. PR-09 добавляет **`execution.reentry_mode ∈ {single, continuous, flip}`** — тег **`strategy-dsl v0.1.4`**. Семантика: [stage-6-1-pr-08-signal-only.md](./stage-6-1-pr-08-signal-only.md), [stage-6-1-pr-09-continuous-flip.md](./stage-6-1-pr-09-continuous-flip.md).
 
 ---
 
@@ -41,9 +41,11 @@
 | `close_long` / `close_short` как **независимые** блоки | yes | — | — | PR-07: optional v1 `close_long` / `close_short` + runtime-side signal exits (OR с mechanical `exit`). |
 | `directional.mode = long_only / short_only` | yes | — | — | |
 | `directional.mode = both` | yes | — | — | PR-07: разрешён только если enabled **и** `open_long`, **и** `open_short` (см. compiler gates). |
-| `signal_only` | yes | — | — | PR-08: v1 `execution.signal_only` + builder `directional.signal_only`; не сочетается с `continuous`/`flip`/`reverse_on_close` (compiler gate). |
-| `continuous` / `flip` / `reverse_on_close` | — | — | yes | Сейчас запрещено compiler’ом. |
-| `allow_reentry` / `cooldown_after_exit_bars` | — | — | yes | Сейчас запрещено compiler’ом. |
+| `signal_only` | yes | — | — | PR-08: v1 `execution.signal_only` + builder `directional.signal_only`. Сочетается с `continuous` / `flip` (PR-09 §4). Не сочетается с `reverse_on_close` (компайлер-gate). |
+| `continuous` (next-bar re-entry) | yes | — | — | PR-09: `execution.reentry_mode="continuous"`; builder `directional.continuous`; 2-барный cooldown снят, same-bar reopen по-прежнему запрещён. |
+| `flip` (same-bar reversal) | yes | — | — | PR-09: `execution.reentry_mode="flip"`; builder `directional.flip`; требует `allow_short=true` **и** enabled `open_long` + `open_short`. |
+| `reverse_on_close` | — | — | yes | Запрещён компайлером (отличается от `flip` по триггеру: закрывающий vs opposite-entry сигнал). |
+| `allow_reentry` / `cooldown_after_exit_bars` | — | — | yes | Ручной cooldown пересекается с `continuous`; отложено до отдельного слайса. |
 
 ---
 

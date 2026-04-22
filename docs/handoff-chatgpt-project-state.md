@@ -4,7 +4,7 @@
 
 **Инструкция для модели-получателя:**  
 1) Опирайся только на этот текст и при необходимости на указанные пути в репозитории.  
-2) **Не предлагай заново реализовать PR-08 (`signal_only`)** — он уже shipped (см. §6).  
+2) **Не предлагай заново реализовать PR-07 / PR-08 / PR-09** — они уже реализованы в коде (см. §6).  
 3) Выдай **нумерованный backlog**: что сделать, в каком порядке, критерии готовности, риски.  
 4) Различай **Go module path** (нижний регистр) и **HTTPS clone URL** (org `Algorhythm-LLC`).
 
@@ -100,7 +100,17 @@ Truthful runtime preflight требует резолва **feature set** (code +
 - **Тесты:** `compile_test.go` (CP), `dslcompile/compile_test.go`, `runtime/engine_test.go`, `cmd/worker/preflight_http_test.go` (engine), `dispatch/dispatch_test.go` (strategy-dsl)  
 - **Matrix:** строки `signal_only` и примечания к `tp_sl`/trailing/time при `signal_only` — `docs/stages/stage-6-runtime-support-matrix.md`
 
-**Следующий крупный semantic slice по плану продукта:** **PR-09 — `continuous` / `flip`** — черновик gate и acceptance: [stage-6-1-pr-09-continuous-flip.md](stages/stage-6-1-pr-09-continuous-flip.md) (семантику утвердить до изменения schema).
+### PR-09 — `continuous` / `flip` (shipped)
+
+- **Семантика заморожена:** `docs/stages/stage-6-1-pr-09-continuous-flip.md`  
+- **DSL:** optional `execution.reentry_mode ∈ {single, continuous, flip}` в `modules/strategy-dsl/v1/strategy.schema.json`; upstream tag **`strategy-dsl v0.1.4`** выпущен; `services/control-plane/go.mod` и `services/backtest-engine/go.mod` — `require v0.1.4` без `replace`.  
+- **Authoring:** `compile.go` — `resolveReentryMode` + gate: `flip` требует `allow_short=true` и enabled `open_long` + `open_short`; `reverse_on_close` / `allow_reentry` / `cooldown_after_exit_bars` — по-прежнему blocked.  
+- **Engine dslcompile:** `V1ExecutionPlan.ReentryMode`, неизвестное значение → compile error.  
+- **Engine runtime:** `exitReason` кодирует precedence (close_* → mechanical → flip → signal-hold); same-bar reversal только для `flip`; cooldown 1-бар для `continuous`/`flip`, 2-бара для `single`.  
+- **Тесты:** `modules/strategy-dsl/v1/validator_test.go`, `services/backtest-engine/internal/dslcompile/compile_test.go` + `internal/runtime/engine_test.go` (continuous, flip, single regression), `services/control-plane/internal/authoring/compile_test.go` (continuous/flip/signal_only+flip/reverse_on_close blocked).  
+- **Matrix:** `continuous` и `flip` → `supported_now`; `reverse_on_close` / `allow_reentry` — `planned_later`.
+
+**Следующий крупный semantic slice по плану продукта:** пока не выбран. Если продукт решит расширять — кандидат: `reverse_on_close` (closing-trigger reversal), `allow_reentry` / `cooldown_after_exit_bars` (явный cooldown override), либо v2 executor spike.
 
 ---
 
@@ -108,9 +118,9 @@ Truthful runtime preflight требует резолва **feature set** (code +
 
 Источник правды: **`docs/stages/stage-6-runtime-support-matrix.md`**.
 
-**Уже supported_now (суть):** builder open/close sides, `directional.mode`, dual entry + close blocks, `signal_only`, базовые exits/risk/execution/filters для v1, `same_bar_close`, привязка feature set как gate.
+**Уже supported_now (суть):** builder open/close sides, `directional.mode`, dual entry + close blocks, `signal_only`, **`continuous` / `flip` (reentry_mode)**, базовые exits/risk/execution/filters для v1, `same_bar_close`, привязка feature set как gate.
 
-**planned_later / compiler block:** `continuous`, `flip`, `reverse_on_close`, reentry/cooldown, продвинутые exits/risk из vision, DSL v2 как executable runtime.
+**planned_later / compiler block:** `reverse_on_close`, `allow_reentry`/`cooldown_after_exit_bars`, продвинутые exits/risk из vision, DSL v2 как executable runtime.
 
 ---
 
