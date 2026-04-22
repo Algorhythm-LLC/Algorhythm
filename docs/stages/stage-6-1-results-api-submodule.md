@@ -1,6 +1,8 @@
 # Stage 6.1 — Вынести `results-api` в отдельный репозиторий / submodule
 
-Сейчас `services/results-api` живёт как **MVP внутри meta-repo** (см. `services/results-api/README.md`). Для Stage 4 / зрелого Stage 6 его нужно привести к тому же стандарту, что `control-plane`, `backtest-engine`, `strategy-dsl`: отдельный git-репозиторий + submodule в Algorhythm.
+**Статус (meta-repo):** **выполнено** — `services/results-api` подключён как **git submodule** → `https://github.com/Algorhythm-LLC/results-api.git` (теги `v0.1.0`, `v0.1.1`; CI workflow в отдельном репозитории).
+
+Историческая заметка: сервис начинался как **MVP plain tree** в meta; цель Stage 4 / зрелого Stage 6 — тот же стандарт, что у `control-plane`, `backtest-engine`, `strategy-dsl`: отдельный репозиторий + submodule.
 
 ## Целевое состояние
 

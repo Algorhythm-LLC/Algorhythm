@@ -8,7 +8,8 @@
 
 Предпосылки:
 
-- Запущены `control-plane`, `backtest-engine` (с настроенным `CP_BACKTEST_ENGINE_URL` в CP), `control-desktop`, `results-api`, ClickHouse с результатами.
+- Клон meta с **`git submodule update --init --recursive`** (в т.ч. `services/results-api` — отдельный репозиторий [Algorhythm-LLC/results-api](https://github.com/Algorhythm-LLC/results-api)).
+- Запущены `control-plane`, `backtest-engine` (с настроенным `CP_BACKTEST_ENGINE_URL` в CP), `control-desktop`, **`results-api`** (из submodule: `go run ./cmd/api` в каталоге `services/results-api` или Docker), ClickHouse с результатами.
 - В PostgreSQL уже есть строка `feature_set_versions` с известным UUID (используйте её в UI поле **Feature set version ID**).
 
 ---

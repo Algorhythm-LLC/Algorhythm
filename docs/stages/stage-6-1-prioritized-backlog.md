@@ -18,7 +18,9 @@
 
 ## 1. Вынести `results-api` в отдельный репозиторий и submodule
 
-Следующий **главный** инфраструктурный шаг: сейчас `results-api` — MVP в дереве meta-repo; Stage 4 изначально требует отдельный сервис + submodule с жизненным циклом, OpenAPI, packaging и CI. Пока не вынесен, Stage 6 compare loop опирается на временную конструкцию.
+**Статус:** **выполнено** в meta-repo (submodule `services/results-api` → `https://github.com/Algorhythm-LLC/results-api.git`). Оставшиеся мелочи: убедиться, что GitHub Actions на remote зелёные; при необходимости дополнить packaging как у других сервисов.
+
+~~Следующий **главный** инфраструктурный шаг: сейчас `results-api` — MVP в дереве meta-repo~~ (историческое описание ниже сохранено как контекст миграции.)
 
 **Детальный план миграции:** [stage-6-1-results-api-submodule.md](./stage-6-1-results-api-submodule.md).
 

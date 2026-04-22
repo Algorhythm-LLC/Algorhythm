@@ -81,7 +81,7 @@ flowchart TD
     mdi[market-data-ingestor<br/>Go + Binance API]
     fb[feature-builder<br/>Go]
     bt[backtest-engine<br/>Go + CH]
-    results[results-api<br/>Go - планируется]
+    results[results-api<br/>Go - submodule]
     llm[llm-analyst<br/>Python 3.12 - планируется]
   end
 
@@ -180,7 +180,7 @@ sequenceDiagram
 | [feature-builder](../services/feature-builder/) | `services/feature-builder` | Feature parquet из raw | Go | [002](architecture/adr-002-data-storage-model.md), [003](architecture/adr-003-service-boundaries.md), [health-http](architecture/adr-health-http-workers.md) | **MVP ready** (1 feature set, 1m only) |
 | [backtest-engine](../services/backtest-engine/) | `services/backtest-engine` | Интерпретатор DSL + запись результатов в CH | Go + ClickHouse | [002](architecture/adr-002-data-storage-model.md), [003](architecture/adr-003-service-boundaries.md), [004](architecture/adr-004-backtest-dsl.md), [health-http](architecture/adr-health-http-workers.md) | **Тонкий orchestration stub**; реальный DSL-runtime — TODO |
 | [control-desktop](../services/control-desktop/) | `services/control-desktop` | Десктопный GUI-оркестратор | Wails v2 + Go + TypeScript | [003](architecture/adr-003-service-boundaries.md) | **Рабочее приложение** (Go + dist); исходники фронта в репо временно редуцированы (см. stage-3) |
-| results-api | `services/results-api` (создать) | Read-only HTTP поверх CH | Go | [003](architecture/adr-003-service-boundaries.md) | **TODO** (этап 4) |
+| [results-api](../services/results-api/) | `services/results-api` | Read-only HTTP поверх CH | Go | [003](architecture/adr-003-service-boundaries.md) | **MVP + submodule** (отдельный репозиторий `Algorhythm-LLC/results-api`; полнота Stage 4 — впереди) |
 | llm-analyst | `services/llm-analyst` (создать) | Embeddings + Qdrant + retrieval | Python 3.12 | [003](architecture/adr-003-service-boundaries.md) | **TODO** (этап 5) |
 
 Инфраструктура: `ops/full-stack/` — `docker-compose.yml` поднимает MinIO, PostgreSQL 16, ClickHouse 24, NATS 2.10 (JetStream), Qdrant. Остаётся в корне мета-репо.
@@ -253,9 +253,9 @@ flowchart LR
 
 Подробности и DoD: [stage-3-backtest-and-desktop.md](stages/stage-3-backtest-and-desktop.md).
 
-### Stage 4 — Results API — TODO
+### Stage 4 — Results API — TODO (сервис заведён, зрелость — впереди)
 
-Новый сервис `results-api` (submodule `services/results-api`). Read-only HTTP поверх ClickHouse: сводки по run, агрегаты по experiment, leaderboard. Зависимость — стабильные таблицы результатов из этапа 3. Подробности: [stage-4-results-api.md](stages/stage-4-results-api.md).
+Сервис **`results-api`** вынесен в **отдельный репозиторий** и подключён в meta как **submodule** `services/results-api` → `https://github.com/Algorhythm-LLC/results-api.git`. Уже есть read-only HTTP над ClickHouse (summary / trades / equity / compare). Для «закрытия» этапа 4 по изначальной спеке остаётся hardening: агрегаты по experiment, leaderboard, auth/rate-limit и т.д. Зависимость — стабильные таблицы результатов из этапа 3. Подробности: [stage-4-results-api.md](stages/stage-4-results-api.md), миграция: [stage-6-1-results-api-submodule.md](stages/stage-6-1-results-api-submodule.md).
 
 ### Stage 5 — LLM Analyst — TODO
 
@@ -263,7 +263,7 @@ flowchart LR
 
 ### Stage 6 — Strategy Authoring — IN PROGRESS
 
-Продуктовый слой над DSL/runtime уже получил первый MVP vertical slice: `draft -> preflight -> publish -> run -> compare` собран end-to-end через `control-plane`, `backtest-engine`, `control-desktop` и минимальный `results-api`. При этом full product maturity ещё не достигнута: монолитный strategy screen, локальный MVP-статус `results-api` и ограниченный runtime-supported subset остаются следующими задачами. Подробности: [stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md).
+Продуктовый слой над DSL/runtime уже получил первый MVP vertical slice: `draft -> preflight -> publish -> run -> compare` собран end-to-end через `control-plane`, `backtest-engine`, `control-desktop` и **`results-api`** (submodule). При этом full product maturity ещё не достигнута: монолитный strategy screen, **зрелость read-side / Stage 4** и ограниченный runtime-supported subset остаются следующими задачами. Подробности: [stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md).
 
 ---
 

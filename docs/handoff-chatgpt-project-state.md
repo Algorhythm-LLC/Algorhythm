@@ -24,7 +24,7 @@
 | `services/control-plane` | API + worker, PG, NATS, стратегии/черновики/эксперименты |
 | `services/backtest-engine` | Исполнение бэктеста, runtime truth, preflight HTTP |
 | `services/control-desktop` | Wails desktop: UI + вызовы CP и results-api |
-| `services/results-api` | **Пока не submodule:** MVP read-only HTTP над ClickHouse (см. §9) |
+| `services/results-api` | **Submodule** → `https://github.com/Algorhythm-LLC/results-api.git` (read-only HTTP над ClickHouse) |
 | `services/feature-builder`, `services/market-data-ingestor` | Данные и фичи (этапы 2–3) |
 
 ---
@@ -152,7 +152,7 @@ Truthful runtime preflight требует резолва **feature set** (code +
 
 ### A. Инфраструктура read-side
 
-- **Вынести `results-api` в отдельный репозиторий + submodule** по `docs/stages/stage-6-1-results-api-submodule.md`: `.gitmodules`, CI, тег, обновить ссылки в E2E/desktop docs, прогнать smoke.
+- **`results-api` как submodule:** **сделано** в meta (`services/results-api` → `Algorhythm-LLC/results-api`, теги `v0.1.0`/`v0.1.1`, Dockerfile/Makefile/CI). Дальше: при необходимости расширить CI/образы и проверить smoke `scripts/stage-6-1-canonical-e2e.ps1` на чистом clone.
 
 ### B. Документация vs код
 
@@ -176,7 +176,7 @@ Truthful runtime preflight требует резолва **feature set** (code +
 ## 10. Известные «дыры» и риски
 
 1. **Preflight без полного feature binding** — см. §4.2 и `docs/stages/stage-6-runtime-subset-expansion.md`.  
-2. **`results-api` не submodule** — риск расхождения версий и отсутствия CI как у остальных сервисов.  
+2. **`results-api` как отдельный сервис** — submodule подключён; дальше риск = расхождение версий между тегами remote и ожиданиями desktop/доков без дисциплины релизов.  
 3. **`control-desktop`** может иметь локальный незакоммиченный WIP в сабмодуле — проверять `git status` внутри submodule.  
 4. **Док stage-3** может вводить в заблуждение — исправить приоритетно (§9B).
 
