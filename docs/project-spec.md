@@ -238,18 +238,15 @@ flowchart LR
 Текущий фокус. Состояние реализации:
 
 **Уже есть:**
-- control-plane: таблицы `strategy_templates`, `strategy_versions`, `experiment_batches`, `experiment_runs` + HTTP API (POST/GET) + обработка `bt.run.completed` / `bt.run.failed` через worker.
-- backtest-engine: MVP-stub — consumer `bt.run.requested`, PATCH run → `running`, INSERT одной строки в CH `backtest_run_summaries`, publish `bt.run.completed`/`failed`.
-- control-desktop: Go backend + ~30 Wails-bound методов + полноценный dist frontend с хеш-роутером и экранами overview/jobs/datasets/backfill/features/validation/health/experiments/processes/backup/settings. Локальный archive/backup работает через NATS subscribe и S3/PG/CH подключения.
+- **control-plane:** таблицы стратегий и экспериментов + HTTP API; **валидация DSL v1/v2** при `POST /strategy-versions`; worker финализирует run по **`bt.run.completed`** / **`bt.run.failed`** (единственный владелец terminal state).
+- **backtest-engine:** consumer `bt.run.requested`; **PATCH только в `running`**; холодная граница **`dslcompile`** → **`runresolve`** → **`featurecompat`**; опционально **`BT_FEATURE_READ_FRAME`** + MinIO/parquet; для **major v1** с feature frame — **`RunV1`** и запись **`backtest_trades` / `backtest_equity_curve` / `backtest_run_metrics`** + строка в **`backtest_run_summaries`**; для прочих major — детерминированный placeholder-симулятор до появления v2 executor. Терминальные PATCH и `result` в PG — не engine, а control-plane worker.
+- **control-desktop:** Wails backend + TypeScript SPA (`frontend/src`), хеш-роутер, экраны данных/фич/health/experiments/**strategies**/processes/backup/settings и др.; локальный archive/backup.
 
 **Что осталось (главное):**
-- Полноценная JSON Schema DSL v1 + валидация в control-plane на публикации версии.
-- Реальный DSL-интерпретатор в backtest-engine: bar-iteration, indicators runtime, order/fill-модель, slippage, PnL, equity curve.
-- Расширенная модель результатов в ClickHouse: `backtest_trades`, `backtest_equity_curve`, `backtest_metrics` + партиционирование + retention.
-- Backtest-engine: чтение feature parquet из MinIO, детерминизм (seeded rng, стабильный порядок итерации).
-- backtest-engine: PATCH run в терминальные статусы (`completed`/`failed`) с `result`.
-- control-plane: устранение mismatch между embedded миграциями (`000001_init.up.sql` со столбцами вроде `model_json`) и Go-кодом в `internal/adapters/postgres/strategy_experiment.go` (ожидает `dsl_json` и т.д.).
-- control-desktop: восстановить/пересобрать `frontend/src/*.ts` (screens, lib, ui) в соответствии с README — сейчас в репо только стили, работающий SPA лежит только в `dist/`.
+- Полноценный **DSL v2 runtime** в engine (сейчас после compile — placeholder, если не v1-путь).
+- Расширение **поддерживаемого subset v1** и продуктовая зрелость UX (частично перенесено в **stage 6** и сравнение через **results-api** submodule).
+- **Идемпотентность** и E2E/hardening сценариев; **trace_id** в логах; при необходимости — **`result-merge`** и обогащение формы `result` в CP.
+- Операционные вещи: **TTL/retention** CH, compose-оркестрация engine на full-stack стенде.
 
 Подробности и DoD: [stage-3-backtest-and-desktop.md](stages/stage-3-backtest-and-desktop.md).
 

@@ -31,11 +31,11 @@
 
 ## 2. Этапы (stages) — краткая карта
 
-| Stage | Тема | Статус в спеках (важно: часть текста устарела) |
-|-------|------|-----------------------------------------------|
+| Stage | Тема | Статус в спеках |
+|-------|------|-----------------|
 | 1–2 | Foundation, data layer | Закрыты как предпосылки |
-| 3 | Backtest engine + control-desktop | **IN PROGRESS** в `docs/project-spec.md` и `docs/stages/stage-3-backtest-and-desktop.md`; **часть DoD в stage-3 описывает более раннее состояние** (stub engine и т.д.) — требуется **пересинхронизация с фактическим кодом** |
-| 4 | Results API как отдельный read-сервис | Задуман отдельно; фактически compare loop Stage 6 уже использует MVP `results-api` в дереве meta |
+| 3 | Backtest engine + control-desktop | **IN PROGRESS**; `stage-3-backtest-and-desktop.md` и секция Stage 3 в `project-spec.md` **синхронизированы с кодом** (v1 runtime, MinIO/parquet path, CH writer, preflight) |
+| 4 | Results API как отдельный read-сервис | **Сервис** — **submodule** `services/results-api` → `https://github.com/Algorhythm-LLC/results-api.git`; зрелость read-side / агрегаты — дальше |
 | 6 | Strategy authoring | **IN PROGRESS** по product vision; **MVP vertical slice уже есть** |
 
 ---
@@ -62,7 +62,7 @@
 - **control-plane:** drafts, compile `draft → canonical DSL`, оркестрация schema + semantic + **вызов engine preflight**, publish `strategy_version`.
 - **backtest-engine:** `dslcompile.Compile`, **RunV1** bar-loop, запись результатов; **runtime preflight** на worker HTTP.
 - **control-desktop:** экран стратегий (монолит), настройка URL results-api.
-- **results-api:** HTTP read-side (MVP в `services/results-api/`, не submodule).
+- **results-api:** HTTP read-side (submodule `services/results-api`, отдельный репозиторий **Algorhythm-LLC/results-api**).
 
 Документы: `docs/stages/stage-6-strategy-authoring.md`, `docs/stage-6-authoring-implementation-report.md`, `docs/stage-6-chatgpt-context.md`.
 
@@ -142,9 +142,9 @@ Truthful runtime preflight требует резолва **feature set** (code +
 - `frontend/src/router.ts`, `navigation/catalog.ts`, `api/wails.ts`
 - `app_strategies.go`, `app_results.go`, `config.go`
 
-### results-api (пока plain tree в meta)
+### results-api (submodule)
 
-- `cmd/api/main.go`, `cmd/api/handlers.go`, `go.mod`, `openapi/openapi.yaml`
+- `services/results-api`: `cmd/api/main.go`, `cmd/api/handlers.go`, `go.mod`, `openapi/openapi.yaml`, собственный CI в submodule
 
 ---
 
@@ -156,7 +156,8 @@ Truthful runtime preflight требует резолва **feature set** (code +
 
 ### B. Документация vs код
 
-- **Пересинхронизировать `docs/stages/stage-3-backtest-and-desktop.md` и секцию Stage 3 в `docs/project-spec.md`** с фактическим engine (v1 runtime, trades/equity, preflight, CH writer). Убрать/переформулировать устаревшие TODO (stub и т.п.). Оставить реальные хвосты: e2e smoke, idempotency `bt.run`, MinIO/dataset path если ещё не закрыто, **PG migration alignment** если mismatch ещё существует, UX desktop для run/result.
+- **`stage-3-backtest-and-desktop.md` и Stage 3 в `project-spec.md`** — актуализированы под RunV1, запись CH 002, опциональный MinIO, PATCH только `running`.
+- Хвосты Stage 3 по-прежнему актуальны там, где помечены в документе: полный **E2E smoke**, **идемпотентность** повторной доставки `bt.run.requested`, операционный **compose** для engine на full-stack стенде.
 
 ### C. Продукт Stage 6 после инфраструктуры
 
@@ -167,9 +168,9 @@ Truthful runtime preflight требует резолва **feature set** (code +
 
 ### D. Операционно для разработчиков
 
-- После клона: `git submodule sync --recursive`  
-- Тесты: `go test ./...` в `modules/strategy-dsl`, `services/control-plane`, `services/backtest-engine`  
-- E2E: `docs/stages/stage-6-1-canonical-e2e.md`, скрипт `scripts/stage-6-1-canonical-e2e.ps1` (параметр FeatureSetVersionId)
+- После клона: `git submodule sync --recursive` и `git submodule update --init --recursive`  
+- Тесты: `go test ./...` в `modules/strategy-dsl`, `services/control-plane`, `services/backtest-engine`; в meta при push/PR также **`.github/workflows/go-smoke.yml`** (strategy-dsl, CP, engine, results-api).  
+- E2E: `docs/stages/stage-6-1-canonical-e2e.md`, скрипт `scripts/stage-6-1-canonical-e2e.ps1` (параметр `-FeatureSetVersionId`) — полный контур со стеком и PostgreSQL.
 
 ---
 
@@ -178,13 +179,14 @@ Truthful runtime preflight требует резолва **feature set** (code +
 1. **Preflight без полного feature binding** — см. §4.2 и `docs/stages/stage-6-runtime-subset-expansion.md`.  
 2. **`results-api` как отдельный сервис** — submodule подключён; дальше риск = расхождение версий между тегами remote и ожиданиями desktop/доков без дисциплины релизов.  
 3. **`control-desktop`** может иметь локальный незакоммиченный WIP в сабмодуле — проверять `git status` внутри submodule.  
-4. **Док stage-3** может вводить в заблуждение — исправить приоритетно (§9B).
+4. ~~**Док stage-3**~~ — синхронизирован с кодом (см. §9B).
 
 ---
 
 ## 11. Ссылки на планы (детализация)
 
 - **Упорядоченный execution backlog (пошаговый план после handoff):** `docs/stages/stage-6-1-prioritized-backlog.md`  
+- **PR-09 (черновик семантики и gate четырёх слоёв):** `docs/stages/stage-6-1-pr-09-continuous-flip.md`  
 - Следующая итерация Stage 6.1: `docs/stages/stage-6-1-next-iteration.md`  
 - Master backlog: `docs/stages/stage-6-1-master-backlog.md`  
 - Subset expansion: `docs/stages/stage-6-runtime-subset-expansion.md`  

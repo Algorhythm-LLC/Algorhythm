@@ -2,6 +2,8 @@
 
 **Автоматизация (semi-automated):** тот же маршрут можно прогнать из PowerShell: [`scripts/stage-6-1-canonical-e2e.ps1`](../../scripts/stage-6-1-canonical-e2e.ps1) (параметр `-FeatureSetVersionId` обязателен — UUID из `feature_set_versions`).
 
+**CI (meta-repo):** быстрый gate `go test` по ключевым модулям — workflow [`.github/workflows/go-smoke.yml`](../../.github/workflows/go-smoke.yml) (не заменяет полный E2E со стеком и БД).
+
 Цель: один **повторяемый** маршрут, который проверяет весь vertical slice Stage 6 после hardening:
 
 `template -> draft (с feature_set_version_id) -> truthful preflight -> publish -> batch -> run -> results-api -> compare`

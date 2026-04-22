@@ -47,9 +47,11 @@
 
 ## 2. Пересинхронизировать `stage-3-backtest-and-desktop.md` и `project-spec.md` с реальным кодом
 
-**stage-3** и **project-spec** частично описывают более раннее состояние engine, хотя по коду уже есть v1 runtime, preflight, trades/equity path. Пока это не поправить, roadmap будет врать о «что ещё осталось».
+**Статус:** **выполнено** — DoD Stage 3, раздел про backtest-engine и таблицы ClickHouse приведены в соответствие с `RunV1`, опциональным MinIO/`BT_FEATURE_READ_FRAME`, веткой placeholder, PATCH только `running`.
 
-**Что сделать:**
+**Исторический контекст:** ранее **stage-3** и **project-spec** описывали более старый stub engine.
+
+**Что было сделано:**
 
 - пройтись по DoD Stage 3 и отметить, что **уже закрыто**;
 - убрать или переписать устаревшие пункты (stub engine, отсутствие runtime и т.п.);
@@ -67,13 +69,15 @@
 
 **База:** [stage-6-1-canonical-e2e.md](./stage-6-1-canonical-e2e.md), скрипт `scripts/stage-6-1-canonical-e2e.ps1`.
 
-**Что сделать:**
+**Что сделано по автоматизации кода:**
 
-- проверить сценарий на чистом окружении после submodule sync;
-- добавить в CI как smoke или зафиксировать как reproducible manual QA;
-- использовать как gate для новых semantic slices.
+- В **корне meta-repo** добавлен workflow **`.github/workflows/go-smoke.yml`** — при push/PR в `main`/`dev` прогоняются `go test ./...` для `modules/strategy-dsl`, `services/control-plane`, `services/backtest-engine`, `services/results-api` (checkout с **recursive submodules**).
 
-**Критерий готовности:** один фиксированный сценарий проходит end-to-end; документирован; воспроизводим на новой машине.
+**Что остаётся (ручной/стендовый gate):**
+
+- Прогон `stage-6-1-canonical-e2e.ps1` с реальным `-FeatureSetVersionId` на окружении со стеком + PostgreSQL (скрипт требует живые сервисы).
+
+**Критерий готовности (полный):** сценарий из §6-1-canonical-e2e проходит end-to-end на чистом clone после `submodule update`; документирован; частично подкреплён CI на уровне Go-модулей.
 
 **Риск:** без эталонного маршрута следующие расширения semantics ломают разные куски Stage 6 незаметно.
 
@@ -98,11 +102,11 @@
 
 ## 5. Разнести монолитный `strategies.ts`
 
-Инженерный долг desktop: `services/control-desktop/frontend/src/screens/strategies.ts`. Детали: [stage-6-ui-restructuring.md](./stage-6-ui-restructuring.md).
+**Статус:** **выполнено в коде** — экран собран из каталога `frontend/src/screens/strategies/` (`index.ts`, `view.ts`, `form.ts`, `builderEnvelope.ts`, секции templates/draft/run/compare); корневой `strategies.ts` остаётся тонким реэкспортом для совместимости импортов.
 
-**Что сделать:** разбить на модули/области (templates, draft, preflight, versions, run launcher, compare); не менять продуктовую семантику сильнее необходимого; vertical slice остаётся зелёным.
+Детали и история: [stage-6-ui-restructuring.md](./stage-6-ui-restructuring.md).
 
-**Критерий готовности:** монолит не «всё сразу»; независимые правки областей; `npx tsc --noEmit` и smoke E2E зелёные.
+**Критерий готовности:** независимые области в отдельных файлах; `npx tsc --noEmit` зелёный; smoke E2E после коммита изменений в submodule **control-desktop**.
 
 **Риск:** сначала добавить `continuous/flip`, потом резать монолит — больше объём для отладки.
 
@@ -112,9 +116,11 @@
 
 Следующий **содержательный** milestone после стабилизации и read-side. Не смешивать с несвязанными рефакторами.
 
+**Черновик плана и gate четырёх слоёв:** [stage-6-1-pr-09-continuous-flip.md](./stage-6-1-pr-09-continuous-flip.md) (семантика и acceptance — дописать перед изменением schema).
+
 **Что сделать:**
 
-- коротко зафиксировать semantics: same-bar vs next-bar, precedence exits vs reopen, cooldown, fees/slippage на reversal, связь с `signal_only`, `close_*`, `reverse_on_close`;
+- утвердить semantics: same-bar vs next-bar, precedence exits vs reopen, cooldown, fees/slippage на reversal, связь с `signal_only`, `close_*`, `reverse_on_close`;
 - провести через **4 слоя:** authoring/compiler → CP preflight → engine preflight → executor + тесты;
 - обновить matrix в **supported_now** только после end-to-end.
 
@@ -136,11 +142,11 @@
 
 ## Итоговый backlog по порядку
 
-1. Операционно закрыть текущее состояние (`dev`, submodules, WIP hygiene).
-2. Вынести `results-api` в отдельный repo/submodule и довести до требований Stage 4.
-3. Пересинхронизировать `stage-3-backtest-and-desktop.md` и `project-spec.md` с реальным кодом.
-4. Застолбить канонический E2E Stage 6.1 как smoke path.
-5. Стабилизировать текущий Stage 6 flow без новых semantics.
-6. Разнести монолитный `strategies.ts`.
-7. Реализовать PR-09 `continuous` / `flip` по правилу четырёх слоёв.
-8. После этого — compare/analytics polish.
+1. Операционно закрыть текущее состояние (`dev`, submodules, WIP hygiene) — **ongoing** (проверить незакоммиченный WIP в submodule **control-desktop** перед push).
+2. **`results-api` submodule** — **done** в meta (дальше — зрелость Stage 4).
+3. **`stage-3` / `project-spec`** — **done** (синхронизация с engine).
+4. Канонический E2E — **частично**: **go-smoke CI** в meta + ручной прогон `stage-6-1-canonical-e2e.ps1` при полном стеке.
+5. Стабилизировать Stage 6 без новых semantics — **ongoing** (truthful preflight, matrix, см. §4 выше).
+6. Декомпозиция **`strategies`** UI — **done** по структуре каталога `screens/strategies/` (закоммитить в submodule при готовности).
+7. **PR-09** `continuous` / `flip` — **черновик** [stage-6-1-pr-09-continuous-flip.md](./stage-6-1-pr-09-continuous-flip.md); реализация — следующий крупный milestone.
+8. После PR-09 — compare/analytics polish.

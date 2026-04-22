@@ -60,7 +60,7 @@ flowchart LR
   bt -- bt.run.completed/failed --> nats
   nats --> cp
 
-  bt -- PATCH /experiment-runs/:id/status --> cp
+  bt -. PATCH … status=running only .-> cp
   bt -- INSERT run summary/trades/equity --> ch[(ClickHouse)]
   bt -- read feature parquet --> minio[(MinIO)]
 ```
@@ -86,10 +86,10 @@ sequenceDiagram
   CP->>PG: UPDATE run status=queued
   CP->>N: publish bt.run.requested
   N->>B: deliver
-  B->>CP: PATCH /experiment-runs/:id/status running
-  B->>M: read features parquet (по dataset_id)
-  B->>B: interpret DSL, simulate
-  B->>CH: INSERT summary/trades/equity
+  B->>CP: PATCH …/status running (только running)
+  B->>M: optional: read feature parquet (BT_FEATURE_READ_FRAME)
+  B->>B: dslcompile → runresolve → RunV1 или placeholder
+  B->>CH: INSERT summary (+ trades/equity/metrics по ветке)
   B->>N: publish bt.run.completed (payload result)
   N->>CP: deliver, HandleRunCompleted
   CP->>PG: UPDATE run status=completed + result
@@ -150,19 +150,20 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  run_id --> summary[backtest_run_summaries<br/>MVP 001]
-  run_id --> trades[backtest_trades<br/>SKELETON 002]
-  run_id --> equity[backtest_equity_curve<br/>SKELETON 002]
-  run_id --> metrics[backtest_run_metrics<br/>SKELETON 002]
+  run_id --> summary[backtest_run_summaries<br/>001 — маркер run]
+  run_id --> trades[backtest_trades<br/>002 — v1 runtime]
+  run_id --> equity[backtest_equity_curve<br/>002 — v1 runtime]
+  run_id --> metrics[backtest_run_metrics<br/>002 — v1 runtime]
 ```
 
 **Уже есть**:
 
-- MVP summary — [001_init.sql](../../services/backtest-engine/migrations/clickhouse/001_init.sql): единственная таблица `default.backtest_run_summaries(run_id, symbol, engine_version, created_at)` с `ENGINE = MergeTree() ORDER BY (run_id, created_at)`. Именно туда `cmd/worker` пишет одну строку.
-- Skeleton канонических таблиц результатов — [002_backtest_results.up.sql](../../services/backtest-engine/migrations/clickhouse/002_backtest_results.up.sql), **DDL применяется, но engine их ещё не заполняет**:
-  - `backtest_trades(run_id, trade_index, symbol, side Enum8, entry_time, exit_time, entry_price, exit_price, quantity, pnl_abs, pnl_bps, fees_abs, slippage_bps, regime_code, created_at)` — `PARTITION BY toYYYYMM(entry_time) ORDER BY (run_id, trade_index)`, codec `DoubleDelta, ZSTD(3)` на временах.
-  - `backtest_equity_curve(run_id, ts, equity, drawdown_abs, drawdown_pct, created_at)` — `PARTITION BY toYYYYMM(ts) ORDER BY (run_id, ts)`.
-  - `backtest_run_metrics(run_id, strategy_version_id, symbol, period_from, period_to, pnl_abs, pnl_pct, sharpe_ratio, sortino_ratio, max_drawdown_abs, max_drawdown_pct, trades_total, trades_won, trades_lost, profit_factor, expectancy, regime_breakdown_json, created_at, version)` — `ReplacingMergeTree(version) ORDER BY (run_id)` для идемпотентных rerun'ов.
+- Маркер прогона — [001_init.sql](../../services/backtest-engine/migrations/clickhouse/001_init.sql): `default.backtest_run_summaries(run_id, symbol, engine_version, created_at)` (`MergeTree ORDER BY (run_id, created_at)`). Worker всегда делает `insertSummary` после успешного выполнения симуляции (дешёвая «одна строка на run» для дашбордов).
+- Канонические таблицы результатов — [002_backtest_results.up.sql](../../services/backtest-engine/migrations/clickhouse/002_backtest_results.up.sql):
+  - `backtest_trades(...)` — партиции по месяцу `entry_time`, кодеки на временах.
+  - `backtest_equity_curve(...)` — партиции по месяцу `ts`.
+  - `backtest_run_metrics(...)` — `ReplacingMergeTree(version) ORDER BY (run_id)`.
+- **Наполнение 002:** при **DSL major v1** и успешном чтении feature frame из MinIO (см. `BT_FEATURE_READ_FRAME` в worker) runtime `RunV1` пишет trades / equity / metrics через [`runtime_exec.go`](../../services/backtest-engine/cmd/worker/runtime_exec.go) (`writeRuntimeResult` → batch insert). Для **не-v1** или локальной разработки без frame остаётся ветка **placeholder** [`simulator.go`](../../services/backtest-engine/cmd/worker/simulator.go) + `writeSimulationResult` — детерминированные синтетические строки по `run_id`. **Major v1 без FeatureFrame** — ошибка run (`bt.run.failed`), т.к. bar loop требует колонок из parquet.
 
 Открытые вопросы:
 
@@ -192,7 +193,7 @@ flowchart LR
 |---|---|---|
 | POST | `/api/v1/strategy-templates` | DONE |
 | GET | `/api/v1/strategy-templates/{code}` | DONE |
-| POST | `/api/v1/strategy-versions` | DONE (но **валидация DSL** — TODO) |
+| POST | `/api/v1/strategy-versions` | DONE (**JSON Schema v1/v2**, невалидный DSL → `422`) |
 | GET | `/api/v1/strategy-versions/{id}` | DONE |
 | POST | `/api/v1/experiment-batches` | DONE |
 | GET | `/api/v1/experiment-batches/{id}` | DONE |
@@ -211,18 +212,25 @@ flowchart LR
 - Outbox worker публикует `bt.run.requested` после `queued`-перевода.
 - JetStream stream `ORCHESTRATION` включает subjects `bt.>`.
 
-### backtest-engine — MVP ORCHESTRATION STUB
+### backtest-engine — orchestration + v1 runtime (partial v2)
 
-Весь код — в одном файле: [cmd/worker/main.go](../../services/backtest-engine/cmd/worker/main.go). В `go.mod` только `clickhouse-go`, `uuid`, `nats.go` — ни MinIO, ни Parquet зависимостей.
+Точка входа — [cmd/worker/main.go](../../services/backtest-engine/cmd/worker/main.go); рядом в `cmd/worker/` лежат симулятор, запись в CH, чтение фич, preflight HTTP.
 
-Текущий happy-path:
+**Зависимости** (`go.mod`): помимо ClickHouse/NATS — `minio-go`, `parquet-go`, модуль `strategy-dsl` для компиляции плана.
 
-1. Consumer `bt.run.requested` (queue `backtest-engine`, durable `backtest-engine-bt-run-v1`).
-2. `PATCH /api/v1/experiment-runs/{id}/status` с `status=running` (нет `result`).
-3. `INSERT INTO backtest_run_summaries` одной строкой `(run_id, symbol, 'mvp', now())`.
-4. Summary **захардкожен** — `{"engine":"mvp","rows":0}`.
-5. `publish bt.run.completed` с этим summary. Ошибка → `publish bt.run.failed`.
-6. **PATCH в `completed`/`failed` не выполняется**; финализацию делает control-plane worker по NATS-событию.
+Типичный поток:
+
+1. Consumer `bt.run.requested` (queue `backtest-engine`, durable `backtest-engine-bt-run-v1`, `DeliverNew`).
+2. **Только** `PATCH …/experiment-runs/{id}/status` → `running` ([`cpclient.PatchRunRunning`](../../services/backtest-engine/internal/cpclient/)); терминальные статусы и `result` выставляет **control-plane worker** по `bt.run.completed` / `bt.run.failed`.
+3. **Compile:** `GET /strategy-versions/{id}` → [`dslcompile.Compile`](../../services/backtest-engine/internal/dslcompile/) (обёртка над `dispatch.Parse` + типизированный план + `RequiredColumns`).
+4. **Resolve + compat:** [`runresolve.Resolve`](../../services/backtest-engine/internal/runresolve/) привязывает feature dataset к run; [`featurecompat.Check`](../../services/backtest-engine/internal/featurecompat/) проверяет колонки контракта до чтения объектного хранилища.
+5. **Feature frame (опционально):** если `BT_FEATURE_READ_FRAME=true`, поднимается MinIO reader ([`internal/storage`](../../services/backtest-engine/internal/storage/)); иначе чтение parquet отключено (удобно для локального smoke без S3).
+6. **Major v1:** при наличии `FeatureFrame` вызывается [`runtime.RunV1`](../../services/backtest-engine/internal/runtime/) → запись trades/equity/metrics в CH ([`runtime_exec.go`](../../services/backtest-engine/cmd/worker/runtime_exec.go)) → `insertSummary` → `buildCompletedSummary` → `bt.run.completed`. Без frame для v1 — `bt.run.failed`.
+7. **Иначе (не-v1 / legacy path):** `insertSummary` + детерминированный placeholder [`simulateRun`](../../services/backtest-engine/cmd/worker/simulator.go) + `writeSimulationResult` в те же таблицы 002 — до появления полноценного исполнителя v2.
+
+**Health HTTP:** `/healthz`, `/readyz` (NATS + ClickHouse), плюс маршруты preflight из [`preflight_http.go`](../../services/backtest-engine/cmd/worker/preflight_http.go).
+
+**Важные env:** `BT_CONTROL_PLANE_URL`, `BT_NATS_URL`, `BT_CLICKHOUSE_DSN`, `BT_HTTP_PORT`, `BT_FEATURE_READ_FRAME`, параметры MinIO (`BT_MINIO_*`, bucket и т.д. — см. [`storage.ConfigFromEnv`](../../services/backtest-engine/internal/storage/)).
 
 ### control-desktop — IN PROGRESS
 
@@ -245,6 +253,7 @@ flowchart LR
 | `#/health` | CP health summary + probes |
 | `#/data` | Сырые POST/GET к API для отладки |
 | `#/experiments` | Запрос experiment run, просмотр run по ID, smoke E2E |
+| `#/strategies`, `#/strategies/new`, `#/strategies/edit`, `#/strategies/version`, `#/strategies/compare` | Стратегии (шаблоны/версии DSL, сравнение) — см. [`router.ts`](../../services/control-desktop/frontend/src/router.ts) |
 | `#/processes` | Managed local processes (старт/стоп backend'ов) |
 | `#/backup` | Локальные бэкапы, archive status, валидация папки |
 | `#/settings` | URLs, data dir, Local Archive toggles |
@@ -267,31 +276,26 @@ flowchart LR
 
 6. **`PATCH /experiment-runs/:id/result-merge`** — по аналогии с `/jobs/:id/result-merge`, чтобы backtest-engine мог докладывать `result` частями (опционально).
 
-### backtest-engine — основная масса работ
+### backtest-engine — что уже сделано vs что осталось
 
-Переход из «orchestration stub» в реальный симулятор. Порядок соответствует ADR-004 v2 (сначала контракт → потом foundations → потом симулятор):
+**Уже в репозитории (MVP контур):**
 
-**Foundations (после freeze v2):**
+- CP client + **только** PATCH `running`; summary для completed строится из метрик runtime/симулятора (`buildCompletedSummary` в `main.go`).
+- **`dslcompile`**, **`runresolve`**, **`featurecompat`**, опциональный **MinIO + parquet** (`BT_FEATURE_READ_FRAME`), **`runtime.RunV1`**, запись в **`backtest_trades` / `backtest_equity_curve` / `backtest_run_metrics`** для ветки major v1 + frame.
+- Placeholder-симулятор для не-v1 (и для dev без feature path) с детерминированными синтетическими результатами.
 
-1. **CP client.** GET `strategy-versions/{id}`, GET `experiment-runs/{id}`, GET dataset + partitions, PATCH `running`. Заменить захардкоженный `"mvp"` summary. **Terminal PATCH (`completed`/`failed` с `result`) НЕ делает engine** — см. п. «Владелец terminal state» в ADR-004 v2; engine публикует только NATS-событие.
-2. **S3/MinIO adapter + Parquet reader.** Зависимости: `minio-go`, `parquet-go`. Добавить `internal/storage/` (MinIO adapter — DONE, M2), `internal/parquet/feature_reader.go` (M3, reads selected columns + dedupes cross-month). Читать по `dataset_id` от CP. Канонический межсервисный контракт формата — [feature-parquet-v1.md](../contracts/feature-parquet-v1.md) (ACCEPTED).
-3. **DSL парсер и AST.** `internal/domain/strategy.go` + `internal/app/dsl/parse.go`. Разбор по major-версии `schema_version`: v1 → legacy структура, v2 → AST (conditionNode, entries[], exits[] с discriminated union по `kind`).
-4. **Feature compatibility validator.** Перед bar loop: резолвит `feature_requirements.required_features` (v2) или используемые индикаторы (v1) в индексы колонок parquet; при несовпадении — `bt.run.failed` с `reason: feature_missing`.
+**Остаётся / углубление (приоритет по продукту):**
 
-**Симулятор:**
+1. **DSL v2 executor** — компиляция в CP уже есть; полноценный runtime (entries/exits AST, модели v2) вместо placeholder для `^2.`.
+2. **Расширение поддерживаемого subset v1** в runtime (например, непрерывные режимы / сложные блоки из бэклога stage 6) — по мере заморозки контракта.
+3. **Идемпотентность повторной доставки** — покрыть тестами сценарий «тот же `run_id`» end-to-end (JetStream уже `DeliverNew` + запись CH с purge прошлых строк в `writeRuntimeResult`).
+4. **`bt.run.failed`** — по желанию: более структурированные коды причин в payload (сейчас текстовые сообщения).
+5. **Наблюдаемость:** прошить `trace_id` из NATS envelope в `slog` context на всём пути worker'а.
 
-5. **Deterministic bar iterator.** Плотное итерирование minute-bar. Фиксированный порядок чтения партиций, columnar-ish layout (contiguous slices), никаких `range map` в hot path. Seeded rng из `run_id` для stochastic-блоков. Single-thread per run; параллелизм только между прогонами.
-6. **Order simulator / fill model.** Market с `slippage_bps`/`fee_bps` (v1) или модельный `fee_model`+`slippage_model`+`fill_model` (v2); позже — limit с partial fills.
-7. **Portfolio / equity curve.** Позиции, cash, margin (фьючерсы), fees. Для v2 — учитывает `position_management` (scale_in/out, partial TP, pyramiding).
-8. **Метрики и PnL.** PnL по трейду, equity timeline, drawdown, Sharpe, Sortino, win rate, profit factor, expectancy (поля уже есть в `backtest_run_metrics`).
-9. **Writer в ClickHouse.** Наполнение `backtest_trades`, `backtest_equity_curve`, `backtest_run_metrics` (DDL уже в 002). Идемпотентный rerun через `ReplacingMergeTree(version)` в metrics.
-10. **Indicators runtime (fallback).** Только для сценариев, не покрытых feature-парке. По умолчанию **выключено**: основной путь — precomputed features из feature-builder (ADR-004 v2).
+**Принципы (без изменений):**
 
-**Прочее:**
-
-11. **Error paths.** Payload `bt.run.failed` с типизированными ошибками (`feature_missing`, `dsl_invalid`, `data_missing`, `runtime_panic`).
-12. **Config/env.** `BT_MINIO_*`, `BT_S3_BUCKET`, `BT_CP_URL`.
-13. **Детерминизм.** Фиксация iteration order, seeded rng, выравнивание timestamp'ов, никаких map на hot path.
+- Engine **не** делает terminal PATCH — только CP worker по NATS (ADR-004).
+- Внутри одного run — single-thread; параллелизм только между runs.
 
 **Решено, не делаем в этом стейдже:**
 
@@ -301,9 +305,10 @@ flowchart LR
 
 ### ClickHouse
 
-- Skeleton-миграция `002_backtest_results.up.sql` уже применяется (см. «Сущности и контракты → ClickHouse»). TODO: начать писать из `backtest-engine` (зависит от пункта про runtime выше).
-- Партиционирование зафиксировано: `backtest_trades` — по `toYYYYMM(entry_time)`, `backtest_equity_curve` — по `toYYYYMM(ts)`, `backtest_run_metrics` — без партиционирования (одна строка на run). Решения по `backtest_positions`, `backtest_scenario_rankings`, `backtest_period_metrics_*` — в следующих миграциях.
-- TTL/retention: пока не определено; вернуться к вопросу при переходе на боевые объёмы.
+- Миграция `002` применяется; **v1 runtime** и **placeholder** оба пишут в таблицы 002 (разная семантика данных — см. раздел про engine выше).
+- Партиционирование зафиксировано: `backtest_trades` / `backtest_equity_curve` по месяцу; `backtest_run_metrics` — одна логическая строка на run с `ReplacingMergeTree(version)`.
+- Следующие таблицы из устава (`backtest_positions`, rankings, периодные метрики) — отдельные миграции.
+- TTL/retention: пока не определено.
 
 ### control-desktop
 
@@ -311,12 +316,12 @@ flowchart LR
 
 2. **Дорефакторить экраны на organisms.** `ui/organisms.ts` содержит `orgPage`, `orgLogCard`, `orgActionsCard`, `orgDataTableCard`, `orgStatsLogCard`, `orgKeyValueList` — это вынесенные повторы из `screens/*.ts`. Экраны пока собирают `innerHTML` вручную через molecules и inline-HTML. Постепенно переписать каждый экран, чтобы inline-HTML не было в screens/ (только вставки значений).
 
-3. **Экраны для этапа 3:**
-   - `#/strategies` — список `strategy_templates`, создание и публикация `strategy_version` через форму с JSON-редактором DSL (после активации валидатора в CP — с предварительной проверкой).
-   - `#/experiments` (обогатить) — создание `experiment_batch`, выбор feature_set_version и инструментов, список `experiment_runs`.
-   - `#/runs/:id` — детальный просмотр run'а: `status`, `result`, ссылки на CH-записи, отображение ошибки из `bt.run.failed`.
+3. **Экраны для этапа 3 (полировка):**
+   - `#/strategies` — **есть маршруты**; дальше — UX и полнота сценариев (draft/preflight/compare уже развиваются в stage 6).
+   - `#/experiments` — обогатить: создание batch, список runs, навигация к результатам.
+   - Детальный просмотр run / ссылки на CH — частично пересекается с **results-api** (submodule, stage 4 read-side).
 
-4. **Интеграция с results-api** отложена до этапа 4.
+4. **results-api** вынесен в отдельный репозиторий (`services/results-api` submodule); глубокая интеграция в desktop для чтения trades/equity — зона stage 4+.
 
 ### Инфраструктура и observability
 
@@ -333,13 +338,13 @@ flowchart LR
 | JSON Schema DSL v1 опубликована и лежит в CP; `POST /strategy-versions` валидирует тело | **DONE** (schema + validator + tests + wired, `422` на невалидный DSL) |
 | ADR-004 v2 + каркас schema v2 опубликованы под review (композируемый AST, entries[]/exits[], feature_requirements, position/risk/portfolio/time/execution) | **DONE — DRAFT** |
 | Схема PG в CP приведена в соответствие с Go-кодом (стратегии/эксперименты/runs) | **DONE** (миграция 000006 подключена, dead `001_init_schema.sql` удалён, cold-start + migrate up прогон пройден) |
-| ClickHouse содержит `backtest_run_summaries` + `backtest_trades` + `backtest_equity_curve` + `backtest_run_metrics` с партиционированием | **DONE — DDL и deterministic placeholder writer пишет все 4 таблицы;** реальное наполнение из нормального симулятора — TODO |
-| backtest-engine читает feature parquet из MinIO по `dataset_id` | TODO |
-| backtest-engine интерпретирует DSL-блоки `instrument_scope/entry/exit/filters/risk/execution` и прогоняет симуляцию детерминированно | TODO |
+| ClickHouse содержит `backtest_run_summaries` + `backtest_trades` + `backtest_equity_curve` + `backtest_run_metrics` с партиционированием | **DONE (DDL)**; **запись:** v1+frame → реальные строки из `RunV1`; иначе placeholder — синтетика |
+| backtest-engine читает feature parquet из MinIO | **DONE при `BT_FEATURE_READ_FRAME=true`** + корректном resolve dataset; без флага чтение отключено (локальный smoke) |
+| backtest-engine интерпретирует DSL v1 и прогоняет симуляцию детерминированно | **PARTIAL — `RunV1`** для поддерживаемого subset v1; v2 и расширения DSL — в работе |
 | События `bt.*` end-to-end с идемпотентностью: повторный `bt.run.requested` с тем же `run_id` не создаёт дубль | IN PROGRESS (durable + `DeliverNew` уже есть, нужно покрыть сценарий) |
 | control-plane корректно финализирует `experiment_run` на `bt.run.completed`/`failed` с сохранением `result` (единственный владелец terminal state) | DONE (consumer есть, надо сверить payload shape после обогащения) |
 | control-desktop: полная атомарная архитектура `atoms → molecules → organisms → screens`; inline-HTML только в organisms/molecules | **DONE** (screens переписаны на `orgPage` + organism-карточки, inline-HTML вынесен) |
-| control-desktop: пользовательский сценарий «данные → фичи → поставить run → увидеть результат» без CLI | IN PROGRESS (данные и фичи — работает; run/result — зависит от готовности engine) |
+| control-desktop: пользовательский сценарий «данные → фичи → поставить run → увидеть результат» без CLI | **IN PROGRESS** (run + terminal result через CP есть; rich просмотр метрик в UI — связка с results-api / экранами) |
 | Документация в `docs/` обновлена (integration-map, event-catalog, и при появлении CH-схемы — ADR) | Ongoing |
 | Смоук e2e-скрипт для этапа 3 проходит в корне репо | TODO |
 
@@ -347,7 +352,7 @@ flowchart LR
 
 ## Риски и критические пункты
 
-1. ~~**Schema vs code drift в control-plane.**~~ Устранено миграцией 000006 и удалением `001_init_schema.sql`. Осталось: прогнать полный `reset-cold-start` + `migrate up` от 000001 до 000006 на чистой БД и убедиться, что `POST /strategy-templates` и `POST /experiment-batches` корректно вставляют данные.
+1. ~~**Schema vs code drift в control-plane.**~~ Устранено миграцией 000006 и удалением `001_init_schema.sql`. Регресс-проверка: при добавлении миграций — cold-start + `migrate up` на пустой БД.
 
 2. **Недетерминизм в Go.** `for ... range map[...]` — рандомная итерация. Любые map-проходы в engine'е должны сортировать ключи, либо работать через slice'ы. Любой stochastic-блок DSL обязан получать **seeded rng** из `run_id`.
 
