@@ -1,0 +1,31 @@
+# Meta-repo smoke: per-submodule Go tests live in each submodule's own `go.yml`
+# (strategy-dsl, backtest-engine, control-plane, results-api). This workflow
+# only validates meta-repo artifacts — docker-compose config and PowerShell
+# E2E script syntax — because actions/checkout@v4 cannot clone same-org
+# submodules with the default GITHUB_TOKEN.
+name: meta-smoke
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose
+        run: docker compose -f ops/full-stack/docker-compose.yml --env-file ops/full-stack/.env.example config --quiet
+      - name: Parse canonical E2E PowerShell script
+        shell: pwsh
+        run: |
+          $errs = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            'scripts/stage-6-1-canonical-e2e.ps1', [ref]$null, [ref]$errs)
+          if ($errs -and $errs.Count -gt 0) {
+            $errs | ForEach-Object { Write-Host $_.Message }
+            exit 1
+          }
+          Write-Host 'syntax ok'
