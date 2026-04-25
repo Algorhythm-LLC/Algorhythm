@@ -2,7 +2,15 @@
 
 **Автоматизация (semi-automated):** тот же маршрут можно прогнать из PowerShell: [`scripts/stage-6-1-canonical-e2e.ps1`](../../scripts/stage-6-1-canonical-e2e.ps1) (параметр `-FeatureSetVersionId` обязателен — UUID из `feature_set_versions`).
 
-**CI (meta-repo):** быстрый gate `go test` по ключевым модулям — workflow [`.github/workflows/go-smoke.yml`](../../.github/workflows/go-smoke.yml) (не заменяет полный E2E со стеком и БД).
+**CI (meta-repo):** `meta-smoke` (compose + разбор PowerShell), per-submodule `go` в `strategy-dsl`, `algorhythm-backtest-engine`, `algorhythm-control-plane`, `results-api` — не заменяет полный E2E со стеком и БД.
+
+**Данные для run (обязательно до шага E):** движок резолвит `dataset_type = feature_<feature_set_code>_<interval>` (например `feature_btcusdt_futures_mvp_1m`) и читает parquet из MinIO, если у `backtest-engine` включено `BT_FEATURE_READ_FRAME=true`. Засеять MinIO + строки `datasets` / `dataset_partitions` в PostgreSQL можно одной командой из submodule `services/backtest-engine`:
+
+```text
+go run ./cmd/seed-stage61-data -cp http://localhost:8080 -minio-endpoint localhost:9000 -minio-access minioadmin -minio-secret minioadmin -bucket algorhythm-datasets
+```
+
+После этого **worker** должен стартовать с теми же `BT_MINIO_*` и `BT_FEATURE_READ_FRAME=true` (см. `internal/storage/storage.go` — env `BT_MINIO_*`).
 
 Цель: один **повторяемый** маршрут, который проверяет весь vertical slice Stage 6 после hardening:
 

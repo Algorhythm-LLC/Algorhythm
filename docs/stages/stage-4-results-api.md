@@ -1,6 +1,6 @@
 # Stage 4 — Results API
 
-**Статус:** TODO. Плановый этап. Начинается после стабилизации ClickHouse-модели результатов этапа 3.
+**Статус:** **IN PROGRESS** — отдельный репозиторий / submodule `services/results-api` с read API и compare; дальше — агрегаты, кэш, rate-limit, жёсткая выдача API-ключей по спеке ниже.
 
 Возврат к [project-spec.md](../project-spec.md).
 
@@ -64,7 +64,7 @@ flowchart LR
 
 ### Авторизация
 
-- По умолчанию: API key через заголовок `X-API-Key`. Генерация — через control-plane (TODO на этом этапе) или ENV-список.
+- API key через заголовок `X-API-Key`. Список допустимых ключей: env **`RESULTS_API_API_KEYS`** (comma-separated); пустой — без auth (dev). Выдача через control-plane — по-прежнему TODO; reverse proxy — опционально.
 - В будущем: интеграция с OIDC/SSO — отдельный ADR.
 
 ---
@@ -121,7 +121,7 @@ flowchart LR
 | OpenAPI 3.1 покрывает все эндпоинты из API-раздела | TODO |
 | Эндпоинт `GET /runs/{id}/summary` отвечает по живым данным из CH | TODO |
 | Leaderboard возвращает топ-N с фильтрами по периоду и метрике | TODO |
-| API key авторизация | TODO |
+| API key (optional): `RESULTS_API_API_KEYS` + `X-API-Key` | **PARTIAL** (без CP-выдачи ключей) |
 | control-desktop читает results-api через `ResultsAPIURL` | TODO |
 | Нагрузочный sanity test (например, 500 rps по leaderboard) | TODO |
 

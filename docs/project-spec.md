@@ -261,7 +261,7 @@ flowchart LR
 
 ### Stage 6 — Strategy Authoring — IN PROGRESS
 
-Продуктовый слой над DSL/runtime уже получил первый MVP vertical slice: `draft -> preflight -> publish -> run -> compare` собран end-to-end через `control-plane`, `backtest-engine`, `control-desktop` и **`results-api`** (submodule). **PR-09 `continuous` / `flip` shipped** (см. [stage-6-1-pr-09-continuous-flip.md](stages/stage-6-1-pr-09-continuous-flip.md); `strategy-dsl v0.1.4`); остаётся canonical E2E на стенде с новым DSL. Full product maturity пока ограничена зрелостью read-side / Stage 4 и стабилизацией preflight/matrix. Подробности: [stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md).
+Продуктовый слой над DSL/runtime уже получил первый MVP vertical slice: `draft -> preflight -> publish -> run -> compare` собран end-to-end через `control-plane`, `backtest-engine`, `control-desktop` и **`results-api`** (submodule). **PR-09 `continuous` / `flip` shipped** (см. [stage-6-1-pr-09-continuous-flip.md](stages/stage-6-1-pr-09-continuous-flip.md); `strategy-dsl v0.1.4`). Канонический E2E со сидом feature-parquet (`backtest-engine/cmd/seed-stage61-data`) и `scripts/stage-6-1-canonical-e2e.ps1` прогоняется на полном стеке. Full product maturity пока ограничена зрелостью read-side / Stage 4 и стабилизацией preflight/matrix. Подробности: [stage-6-strategy-authoring.md](stages/stage-6-strategy-authoring.md).
 
 ---
 

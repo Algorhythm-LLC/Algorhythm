@@ -1,10 +1,11 @@
-# Stage 6.1 — Canonical vertical E2E (semi-automated)
-# Mirrors docs/stages/stage-6-1-canonical-e2e.md: template → draft (advanced) → preflight → publish → batch → run → results-api → compare.
+﻿# Stage 6.1 - Canonical vertical E2E (semi-automated)
+# Mirrors docs/stages/stage-6-1-canonical-e2e.md: template -> draft (advanced) -> preflight -> publish -> batch -> run -> results-api -> compare.
 #
 # Prerequisites:
 #   - control-plane API reachable (default http://localhost:8080)
-#   - backtest-engine reachable from CP (CP_BACKTEST_ENGINE_URL) so runs complete
+#   - backtest-engine worker with BT_FEATURE_READ_FRAME=true and BT_MINIO_* (see services/backtest-engine/internal/storage)
 #   - results-api reachable (default http://localhost:8082)
+#   - Seeded feature dataset: run from services/backtest-engine: go run ./cmd/seed-stage61-data (see docs/stages/stage-6-1-canonical-e2e.md)
 #   - PostgreSQL row feature_set_versions.id = UUID you pass in -FeatureSetVersionId
 #     (must resolve to a feature set whose contract satisfies the sample DSL columns)
 #
@@ -37,7 +38,11 @@ function Fail([string]$msg) {
     exit 1
 }
 
-function Cp([string]$method, [string]$path, $body = $null) {
+# NOTE: use CpApi / RsApi names, not Cp / Rs - PowerShell 5 has `Cp` as a
+# built-in alias for `Copy-Item`, and the parser resolves aliases before
+# function definitions in some contexts (e.g. `Cp "POST" ... @{...}` gets
+# bound to Copy-Item and fails with "positional parameter ... Hashtable").
+function CpApi([string]$method, [string]$path, $body = $null) {
     $uri = "$cp$path"
     if ($null -eq $body) {
         return Invoke-RestMethod -Method $method -Uri $uri
@@ -45,7 +50,7 @@ function Cp([string]$method, [string]$path, $body = $null) {
     return Invoke-RestMethod -Method $method -Uri $uri -ContentType "application/json" -Body ($body | ConvertTo-Json -Depth 30 -Compress)
 }
 
-function Rs([string]$method, [string]$path) {
+function RsApi([string]$method, [string]$path) {
     $uri = "$rs$path"
     return Invoke-RestMethod -Method $method -Uri $uri
 }
@@ -53,7 +58,7 @@ function Rs([string]$method, [string]$path) {
 function Wait-ExperimentRun([string]$runId) {
     $deadline = (Get-Date).AddSeconds($RunTimeoutSec)
     while ((Get-Date) -lt $deadline) {
-        $r = Cp "GET" "/api/v1/experiment-runs/$runId"
+        $r = CpApi "GET" "/api/v1/experiment-runs/$runId"
         if ($r.status -eq "completed" -or $r.status -eq "failed") { return $r }
         Start-Sleep -Milliseconds 500
     }
@@ -88,7 +93,7 @@ function DslV1WithCloseLong([string]$code) {
     return $h
 }
 
-# Stage 6.1 PR-09: continuous — keeps long-only baseline, just allows next-bar
+# Stage 6.1 PR-09: continuous вЂ” keeps long-only baseline, just allows next-bar
 # re-entry by dropping the 2-bar cooldown. No opposite side required.
 function DslV1Continuous([string]$code) {
     $h = DslV1Baseline $code
@@ -96,7 +101,7 @@ function DslV1Continuous([string]$code) {
     return $h
 }
 
-# Stage 6.1 PR-09: flip — needs allow_short=true plus both `entry` and
+# Stage 6.1 PR-09: flip вЂ” needs allow_short=true plus both `entry` and
 # `entry_short`; same-bar reversal on opposite-side entry signal.
 function DslV1Flip([string]$code) {
     $h = DslV1Baseline $code
@@ -119,9 +124,9 @@ try {
 } catch { Fail "results-api not reachable at $rs/readyz" }
 
 try {
-    $null = Cp "GET" "/api/v1/strategy-templates/$TemplateCode"
+    $null = CpApi "GET" "/api/v1/strategy-templates/$TemplateCode"
 } catch {
-    $null = Cp "POST" "/api/v1/strategy-templates" @{
+    $null = CpApi "POST" "/api/v1/strategy-templates" @{
         code        = $TemplateCode
         name        = "Stage 6.1 canonical"
         description = "Created by scripts/stage-6-1-canonical-e2e.ps1"
@@ -134,15 +139,15 @@ function Publish-Version([hashtable]$dsl) {
         draft_json             = (New-AdvancedEnvelope $dsl)
         created_by             = "stage-6-1-canonical-e2e"
     }
-    $draft = Cp "POST" "/api/v1/strategy-drafts" $draftBody
+    $draft = CpApi "POST" "/api/v1/strategy-drafts" $draftBody
     $did = $draft.id
     if (-not $did) { Fail "draft create: missing id" }
 
-    $pf = Cp "POST" "/api/v1/strategy-drafts/$did/preflight" @{}
+    $pf = CpApi "POST" "/api/v1/strategy-drafts/$did/preflight" @{}
     if (-not $pf.valid) { Fail "preflight invalid: $($pf | ConvertTo-Json -Depth 8)" }
     if (-not $pf.runtime_supported) { Fail "preflight runtime_supported=false: $($pf | ConvertTo-Json -Depth 8)" }
 
-    $pub = Cp "POST" "/api/v1/strategy-drafts/$did/publish" @{ version = 0 }
+    $pub = CpApi "POST" "/api/v1/strategy-drafts/$did/publish" @{ version = 0 }
     $sv = $pub.strategy_version
     if (-not $sv.id) { Fail "publish: missing strategy_version.id" }
     return $sv.id
@@ -161,7 +166,7 @@ if ($IncludePR09) {
 }
 
 $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-$batch = Cp "POST" "/api/v1/experiment-batches" @{
+$batch = CpApi "POST" "/api/v1/experiment-batches" @{
     name                     = "stage61_canonical_$ts"
     feature_set_version_id   = $FeatureSetVersionId
     symbol_universe_json     = @($Symbol)
@@ -169,7 +174,7 @@ $batch = Cp "POST" "/api/v1/experiment-batches" @{
 $bid = $batch.id
 
 function Request-Run([string]$svId) {
-    return Cp "POST" "/api/v1/experiment-runs/request" @{
+    return CpApi "POST" "/api/v1/experiment-runs/request" @{
         experiment_batch_id  = $bid
         strategy_version_id  = $svId
         symbol               = $Symbol
@@ -200,31 +205,32 @@ if ($IncludePR09) {
     Write-Host "runs completed C(continuous)=$($runC.id) D(flip)=$($runD.id)" -ForegroundColor Green
 }
 
-$sumA = Rs "GET" "/api/v1/runs/$($runA.id)/summary"
-$sumB = Rs "GET" "/api/v1/runs/$($runB.id)/summary"
+$sumA = RsApi "GET" "/api/v1/runs/$($runA.id)/summary"
+$sumB = RsApi "GET" "/api/v1/runs/$($runB.id)/summary"
 if ($null -eq $sumA) { Fail "results summary A empty" }
 if ($null -eq $sumB) { Fail "results summary B empty" }
 
 if ($IncludePR09) {
-    $sumC = Rs "GET" "/api/v1/runs/$($runC.id)/summary"
-    $sumD = Rs "GET" "/api/v1/runs/$($runD.id)/summary"
+    $sumC = RsApi "GET" "/api/v1/runs/$($runC.id)/summary"
+    $sumD = RsApi "GET" "/api/v1/runs/$($runD.id)/summary"
     if ($null -eq $sumC) { Fail "results summary C (continuous) empty" }
     if ($null -eq $sumD) { Fail "results summary D (flip) empty" }
 }
 
-$cmpRuns = Rs "GET" "/api/v1/compare/runs?left_run_id=$($runA.id)&right_run_id=$($runB.id)"
+$cmpRuns = RsApi "GET" "/api/v1/compare/runs?left_run_id=$($runA.id)&right_run_id=$($runB.id)"
 if ($null -eq $cmpRuns) { Fail "compare runs empty" }
 
-$cmpVer = Rs "GET" "/api/v1/compare/versions?left_version_id=$svA&right_version_id=$svB"
+$cmpVer = RsApi "GET" "/api/v1/compare/versions?left_version_id=$svA&right_version_id=$svB"
 if ($null -eq $cmpVer) { Fail "compare versions empty" }
 
 if ($IncludePR09) {
     # PR-09: ensure continuous and flip produce distinct shapes vs baseline.
-    $cmpAC = Rs "GET" "/api/v1/compare/runs?left_run_id=$($runA.id)&right_run_id=$($runC.id)"
+    $cmpAC = RsApi "GET" "/api/v1/compare/runs?left_run_id=$($runA.id)&right_run_id=$($runC.id)"
     if ($null -eq $cmpAC) { Fail "compare runs A vs C (continuous) empty" }
-    $cmpAD = Rs "GET" "/api/v1/compare/runs?left_run_id=$($runA.id)&right_run_id=$($runD.id)"
+    $cmpAD = RsApi "GET" "/api/v1/compare/runs?left_run_id=$($runA.id)&right_run_id=$($runD.id)"
     if ($null -eq $cmpAD) { Fail "compare runs A vs D (flip) empty" }
 }
 
 Write-Host "=== stage-6-1-canonical-e2e: PASS ===" -ForegroundColor Green
 exit 0
+

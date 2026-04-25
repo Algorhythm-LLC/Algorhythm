@@ -2,7 +2,7 @@
 
 **Формат:** таблицы и текст — всегда видны. Диаграммы — в блоках **Mermaid** (на [GitHub](https://github.com/Algorhythm-LLC/Algorhythm/blob/dev/docs/project-status.md) они превращаются в картинки). Если в редакторе блоки `mermaid` выглядят «пустыми», ниже для каждой схемы есть **ASCII-копия**, которая отображается без рендерера.
 
-**Снимок:** 2026-04-22 (PR-09 shipped; strategy-dsl v0.1.4 released) · **Meta-repo:** [Algorhythm-LLC/Algorhythm](https://github.com/Algorhythm-LLC/Algorhythm) · ветка разработки: `dev`
+**Снимок:** 2026-04-23 (PR-09 shipped; strategy-dsl v0.1.4; seed `cmd/seed-stage61-data` + canonical E2E до compare на стенде) · **Meta-repo:** [Algorhythm-LLC/Algorhythm](https://github.com/Algorhythm-LLC/Algorhythm) · ветка разработки: `dev`
 
 Возврат к [project-spec.md](project-spec.md).
 
@@ -105,25 +105,44 @@ flowchart TB
 | PR-09 | `continuous` / `flip` (reentry_mode) | [stage-6-1-pr-09-continuous-flip.md](stages/stage-6-1-pr-09-continuous-flip.md) |
 | — | strategy-dsl | **v0.1.4** (released; `replace` снят в CP и engine) |
 
-**Следующий semantic slice не выбран.** Кандидаты: `reverse_on_close`, явный `allow_reentry` / `cooldown`, или DSL v2 executor. Текущий фокус — canonical E2E на стенде с новым DSL.
+**Следующий semantic slice не выбран.** Кандидаты: `reverse_on_close`, явный `allow_reentry` / `cooldown`, или DSL v2 executor. Текущий фокус — **Stage 4** (read-side: агрегаты, кэш, rate-limit) при необходимости с усилением auth поверх optional `X-API-Key` (`RESULTS_API_API_KEYS`).
 
 ---
 
 ## CI и E2E
 
-| Что | Где |
-|-----|-----|
-| `go test` по ключевым модулям | Meta: `.github/workflows/go-smoke.yml` (push/PR `main`, `dev`) |
-| CI сервиса results-api | Submodule: `services/results-api/.github/workflows/` |
-| Канонический вертикальный сценарий Stage 6.1 | [stage-6-1-canonical-e2e.md](stages/stage-6-1-canonical-e2e.md), скрипт `scripts/stage-6-1-canonical-e2e.ps1` (нужен живой стек + UUID feature set) |
+`actions/checkout@v4` с `GITHUB_TOKEN` не умеет клонировать приватные сабмодули
+одной организации, поэтому CI раскатан **по сабмодулям**, а в meta-repo остался
+только валидатор артефактов.
+
+| Workflow | Репо | Последний статус (2026-04-22) |
+|----------|------|-------------------------------|
+| `meta-smoke` (compose config + pwsh parse) | meta `.github/workflows/meta-smoke.yml` | ✅ success |
+| `go` (vet + test) | `strategy-dsl/.github/workflows/go.yml` | ✅ success |
+| `go` (vet + test) | `results-api/.github/workflows/go.yml` | ✅ success; **`workflow_dispatch`** — ручной прогон |
+| `go` (vet + test) | `algorhythm-backtest-engine/.github/workflows/go.yml` | ✅ (публичный `strategy-dsl` и/или `ORG_GH_PAT`); **`workflow_dispatch`** |
+| `go` (vet + test) | `algorhythm-control-plane/.github/workflows/go.yml` | ✅ (аналогично); **`workflow_dispatch`** |
+
+**Опционально:** org secret `ORG_GH_PAT` — если снова сделать `strategy-dsl` приватным или для зеркал без публичного модуля; при публичных репозиториях `go` тянет зависимости без PAT.
+
+**Live-stack проверки (локальный Docker + нативные Go-сервисы):**
+
+- Infra (`ops/full-stack/docker-compose.yml`): Postgres / NATS / ClickHouse / MinIO — healthy.
+- ClickHouse миграции `001_init.sql`, `002_backtest_results.up.sql` — applied.
+- `/readyz` на `:8080` (CP) / `:8090` (BE) / `:8082` (results-api) — `ok`.
+- PR-09 authoring flow (baseline + `reentry_mode=continuous` + `reentry_mode=flip`): draft → preflight → publish проходит на живом стеке; `strategy-versions` хранят DSL с корректным `execution.reentry_mode`.
+- **Сид данных для run:** `services/backtest-engine` — `go run ./cmd/seed-stage61-data` (загрузка v1 parquet в MinIO + `POST /api/v1/datasets` и partition в CP). Затем `backtest-engine` с `BT_FEATURE_READ_FRAME=true` и согласованными `BT_MINIO_*`.
+- `scripts/stage-6-1-canonical-e2e.ps1 -IncludePR09`: полный маршрут до `compare` при поднятом стеке и сиде выше.
+
+Канонический сценарий: [stage-6-1-canonical-e2e.md](stages/stage-6-1-canonical-e2e.md), скрипт [`scripts/stage-6-1-canonical-e2e.ps1`](../scripts/stage-6-1-canonical-e2e.ps1).
 
 ---
 
 ## Следующие шаги (кратко)
 
-1. Прогнать **canonical E2E** на стенде с `-FeatureSetVersionId` **и** DSL, где `execution.reentry_mode` ≠ `single`.
-2. Зрелость **Stage 4** (results-api): агрегаты, auth, rate-limit по спеке.
-3. Выбрать следующий semantic slice осознанно (`reverse_on_close` / `allow_reentry` / v2 executor).
+1. Зрелость **Stage 4** (results-api): агрегаты, кэш, rate-limit по спеке; optional API key уже через env **`RESULTS_API_API_KEYS`** + заголовок **`X-API-Key`** (см. `services/results-api/README.md`).
+2. Выбрать следующий semantic slice осознанно (`reverse_on_close` / `allow_reentry` / v2 executor).
+3. При смене политики репо: при необходимости снова настроить `ORG_GH_PAT` для приватного `strategy-dsl`.
 
 ---
 
