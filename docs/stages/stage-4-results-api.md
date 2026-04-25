@@ -57,8 +57,8 @@ flowchart LR
 | GET | `/api/v1/runs/{run_id}/equity-curve?granularity=1m\|1h\|1d` | Equity curve |
 | GET | `/api/v1/experiments/{batch_id}/runs` | Список runs по experiment batch |
 | GET | `/api/v1/experiments/{batch_id}/aggregates?metric=sharpe\|maxdd\|pnl\|winrate&groupby=symbol\|month` | Предагрегаты |
-| GET | `/api/v1/leaderboard?feature_set_version_id=&period=month\|quarter\|year&metric=sharpe&limit=` | Топ-стратегии по метрике |
-| GET | `/api/v1/metrics/run/{run_id}` | Все значения из `backtest_metrics` |
+| GET | `/api/v1/leaderboard?strategy_version_id=&feature_set_version_id= (alias)&period=all\|month\|quarter\|year&metric=…&limit=` | Топ runs из **`backtest_run_metrics`** (CH 002) |
+| GET | `/api/v1/metrics/run/{run_id}` | Полная строка **`backtest_run_metrics`**, включ. `version` / `created_at` (EAV-таблицы `backtest_metrics` в DDL нет) |
 
 Все ответы — JSON. Диапазоны дат в ISO 8601 UTC.
 
@@ -71,7 +71,7 @@ flowchart LR
 
 ## Сущности и зависимости
 
-- Читает только ClickHouse таблицы из этапа 3: `backtest_run_summaries`, `backtest_trades`, `backtest_equity_curve`, `backtest_metrics`. Никаких local tables.
+- Читает только ClickHouse из этапа 3: `backtest_run_summaries` (маркер), `backtest_trades`, `backtest_equity_curve`, **`backtest_run_metrics`** (сводка по run, ReplacingMergeTree). Ничего из `backtest_period_metrics_*` / MV в текущем DDL. Никаких local tables.
 - Метаданные run/experiment (имя стратегии, feature_set_version, символы) — **HTTP GET к control-plane** при необходимости; никакого прямого доступа к PostgreSQL CP.
 - ClickHouse DSN — отдельный `RESULTS_API_CLICKHOUSE_DSN` с read-only учёткой.
 
@@ -118,9 +118,9 @@ flowchart LR
 | Критерий | Статус |
 |---|---|
 | Submodule создан, сервис собирается и запускается | TODO |
-| OpenAPI 3.1: все **реализованные** пути + пробы; `GET /openapi.yaml` | **PARTIAL** (витринные aggregates/leaderboard в спеке ниже — по мере реализации) |
-| Эндпоинт `GET /runs/{id}/summary` отвечает по живым данным из CH | TODO |
-| Leaderboard возвращает топ-N с фильтрами по периоду и метрике | TODO |
+| OpenAPI 3.1: все **реализованные** пути + пробы; `GET /openapi.yaml` | **PARTIAL** (experiments/aggregates / некоторые query-параметры из драфта — TODO) |
+| Эндпоинт `GET /api/v1/runs/{id}/summary` и метрики/leaderboard — по CH | **MVP (код + DDL 002)** |
+| Leaderboard: топ-N, period, metric, strategy_version | **MVP** (см. `GET /api/v1/leaderboard`) |
 | API key (optional): `RESULTS_API_API_KEYS` + `X-API-Key` | **PARTIAL** (без CP-выдачи ключей) |
 | control-desktop читает results-api через `ResultsAPIURL` | TODO |
 | Нагрузочный sanity test (например, 500 rps по leaderboard) | TODO |
@@ -129,7 +129,7 @@ flowchart LR
 
 ## Зависимости и риски
 
-- **Зависит от этапа 3**: пока нет стабильных ClickHouse-таблиц `backtest_trades`/`backtest_equity_curve`/`backtest_metrics`, results-api строится на MVP-таблице и будет требовать миграций интерфейса.
+- **Зависит от этапа 3 / DDL 002:** контракт фиксирован в `migrations/clickhouse/002_backtest_results.up.sql`; read-side использует `FINAL` для `backtest_run_metrics` где нужно. Расширенные `*_period_metrics_*` — отдельные миграции.
 - **ClickHouse DSN и доступы**: разделить `write` (backtest-engine) и `read-only` (results-api) учётки.
 - **Cache invalidation**: если пойти путём NATS-триггеров, получим зависимость от NATS при read pathway. На старте — только TTL.
 

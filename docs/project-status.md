@@ -140,7 +140,7 @@ flowchart TB
 
 ## Следующие шаги (кратко)
 
-1. Зрелость **Stage 4** (results-api): **OpenAPI 3.1** в репо + **`GET /openapi.yaml`**; **кэш** сводок и **rate limit** на `/api/...` включены; дальше — **агрегаты/leaderboard** и витринные эндпоинты по спеке. Optional API key: **`RESULTS_API_API_KEYS`** + **`X-API-Key`** (см. `services/results-api/README.md`).
+1. Зрелость **Stage 4** (results-api): **OpenAPI 3.1** + `GET /openapi.yaml`; read из **`backtest_run_metrics` / trades / equity**; **`GET /api/v1/leaderboard`**, **`GET /api/v1/metrics/run/{id}`**; **кэш** сводок, **rate limit**; дальше — **experiments/aggregates** (если появятся в CH) и **control-desktop** интеграция. Optional API key: **`RESULTS_API_API_KEYS`** (см. `services/results-api/README.md`).
 2. Выбрать следующий semantic slice осознанно (`reverse_on_close` / `allow_reentry` / v2 executor).
 3. При смене политики репо: при необходимости снова настроить `ORG_GH_PAT` для приватного `strategy-dsl`.
 
