@@ -1,6 +1,6 @@
 # Stage 4 — Results API
 
-**Статус:** **IN PROGRESS** — submodule `services/results-api`: read API, compare, optional API key, **LRU+TTL кэш** сводок по run, **rate limit** по `real IP + path` на `/api/...`. Дальше — агрегаты, leaderboard, полный OpenAPI, выдача ключей через control-plane.
+**Статус:** **IN PROGRESS** — submodule `services/results-api`: read API, compare, optional API key, **LRU+TTL кэш** сводок по run, **rate limit** на `/api/...`, **OpenAPI 3.1** (исходник `internal/openapispec/openapi.yaml`, выдача `GET /openapi.yaml`). Дальше — агрегаты, leaderboard, эндпоинты из раздела API ниже, которые ещё не в коде, выдача ключей через control-plane.
 
 Возврат к [project-spec.md](../project-spec.md).
 
@@ -118,7 +118,7 @@ flowchart LR
 | Критерий | Статус |
 |---|---|
 | Submodule создан, сервис собирается и запускается | TODO |
-| OpenAPI 3.1 покрывает все эндпоинты из API-раздела | TODO |
+| OpenAPI 3.1: все **реализованные** пути + пробы; `GET /openapi.yaml` | **PARTIAL** (витринные aggregates/leaderboard в спеке ниже — по мере реализации) |
 | Эндпоинт `GET /runs/{id}/summary` отвечает по живым данным из CH | TODO |
 | Leaderboard возвращает топ-N с фильтрами по периоду и метрике | TODO |
 | API key (optional): `RESULTS_API_API_KEYS` + `X-API-Key` | **PARTIAL** (без CP-выдачи ключей) |
