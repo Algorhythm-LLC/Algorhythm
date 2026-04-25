@@ -1,6 +1,6 @@
 # Stage 4 — Results API
 
-**Статус:** **IN PROGRESS** — отдельный репозиторий / submodule `services/results-api` с read API и compare; дальше — агрегаты, кэш, rate-limit, жёсткая выдача API-ключей по спеке ниже.
+**Статус:** **IN PROGRESS** — submodule `services/results-api`: read API, compare, optional API key, **LRU+TTL кэш** сводок по run, **rate limit** по `real IP + path` на `/api/...`. Дальше — агрегаты, leaderboard, полный OpenAPI, выдача ключей через control-plane.
 
 Возврат к [project-spec.md](../project-spec.md).
 
